@@ -1,0 +1,10 @@
+Installation: 
+
+python3.10 -m venv venv_stix
+source venv_stix/bin/activate    
+pip install -r requirements.txt 
+brew install tcl-tk 
+brew install python-tk@3.10 
+
+Call: 
+python3.10 main.py 

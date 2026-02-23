@@ -23,3 +23,7 @@ __pycache__/
 *.db
 .env
 .flaskenv
+
+build/
+venv_stix/
+data/
