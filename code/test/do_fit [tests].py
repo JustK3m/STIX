@@ -5,9 +5,8 @@ from astropy.modeling import models, fitting
 from astropy.modeling.models import custom_model
 from pandas.plotting import register_matplotlib_converters
 import numpy as np
-import new_window
-import background
-import rebin_flux as rebin
+from archive import rebin_flux as rebin, new_window
+from src.process import background
 
 register_matplotlib_converters()
 
@@ -220,11 +219,11 @@ class Fitting:
 
     def _selective_fit(self):
         """Selection depending on Plot Units and Function Model
-          Predefine Input Data in energy_data and spec_data
+          Predefine Plotting Data in energy_data and spec_data
           We equate three components to rate_data, counts_data, flux_data. The value of energy_data is the same for all cases
           energy_data - independent variable, nominally energy in keV
           spec_data - Plot Unit"""
-        # load chosen file in Select Input section
+        # load chosen file in Select Plotting section
         fname = background.BackgroundWindow.fname
         if fname is None:  # if file not choosen, print
             print('Please, choose input file')
