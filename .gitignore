@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+*venv/
+*env/
+.venv/
+.env/
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints/*
+
+# Configuration files
+*.log
+*.sqlite3
+*.db
+.env
+.flaskenv
