@@ -258,7 +258,7 @@ class Fitting:
         self.bkg_end_index = []    # Liste des indices de fin pour chaque canal
         self.var_sep_times = IntVar(value=0)
 
-
+        self.fitter = LevMarLSQFitter()
 
         self.energy_min_var = tk.DoubleVar()
         self.energy_max_var = tk.DoubleVar()
@@ -631,11 +631,27 @@ class Fitting:
 
 
         self.lblFunc = Label(self.top2, text="Set function components: ")  # name the scrollbar
-        self.lblFunc.place(relx=0.75, rely=0.30)
+        self.lblFunc.place(relx=0.65, rely=0.30)
 
         self.Value_Button = Button(self.top2, text="Function value(s)",
                                    command=Set_Function)  # place a "Function value" button
-        self.Value_Button.place(relx=0.75, rely=0.35, relheight=0.05, relwidth=0.13)
+        self.Value_Button.place(relx=0.65, rely=0.35, relheight=0.05, relwidth=0.13)
+
+        self.lblStat = Label(self.top2, text="Set statistics: ")
+        self.lblStat.place(relx=0.85, rely=0.30)
+
+        def Set_Statistics(name):
+            lkupStatistic = { "C-stat" : LevMarCstatFitter(), "Chi2": LevMarLSQFitter()}
+            self.fitter = lkupStatistic[name]
+            self.menuStat.config(text=name)
+
+        self.menuStat = tk.Menubutton(self.top2, text="Chi2", relief="raised")
+        self.menuStat.place(relx=0.85, rely=0.35, relheight=0.05, relwidth=0.13)
+
+        self.menuStat.menu = tk.Menu(self.menuStat, tearoff = 0)
+        self.menuStat["menu"] = self.menuStat.menu
+        self.menuStat.menu.add_command(label="Chi2", command=lambda: Set_Statistics("Chi2"))
+        self.menuStat.menu.add_command(label="C-stat", command= lambda: Set_Statistics("C-stat"))
 
         # Energies range(s) to fit
 
@@ -1670,11 +1686,9 @@ class Fitting:
                     except Exception:
                         pass
 
-        fitter = LevMarCstatFitter()
-
         # 1) Fit non-borné
         try:
-            fitted_nc = fitter(copy.deepcopy(model_template), x_fit, y_fit,
+            fitted_nc = self.fitter(copy.deepcopy(model_template), x_fit, y_fit,
                             weights=1.0 / (y_err + 1e-30))
         except Exception as e:
             print("⚠️ Unconstrained LevMar fit failed:", e)
@@ -1727,7 +1741,7 @@ class Fitting:
                 getattr(bounded_model, pname).value = uncon_values[i]
 
         try:
-            fitted_bounded = fitter(bounded_model, x_fit, y_fit,
+            fitted_bounded = self.fitter(bounded_model, x_fit, y_fit,
                                     weights=1.0 / (y_err + 1e-30))
             return fitted_bounded
         except Exception as e:
@@ -1753,8 +1767,6 @@ class Fitting:
         if initial_values is None:
             initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
 
-        fitter = LevMarCstatFitter()
-
         # --- Étape 0 : appliquer les valeurs initiales ---
         try:
             for pname, val in initial_values.items():
@@ -1778,7 +1790,7 @@ class Fitting:
                     pass
 
         try:
-            fitted1 = fitter(model_step1, x_fit, y_fit, weights=1.0 / (y_err + 1e-30))
+            fitted1 = self.fitter(model_step1, x_fit, y_fit, weights=1.0 / (y_err + 1e-30))
             y_model1 = fitted1(x_fit)
             if not np.all(np.isfinite(y_model1)):
                 raise ValueError("Non-finite model output at step1")
@@ -1832,9 +1844,8 @@ class Fitting:
                 except Exception:
                     pass
 
-        fitter = LevMarCstatFitter()
         try:
-            fitted2 = fitter(model_bounded, x_fit, y_fit, weights=1.0 / (y_err + 1e-30))
+            fitted2 = self.fitter(model_bounded, x_fit, y_fit, weights=1.0 / (y_err + 1e-30))
             return fitted2
         except Exception as e_step2:
             print(f"⚠️ Step2 LevMar (user bounds) failed: {e_step2}")
