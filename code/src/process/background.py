@@ -5,7 +5,7 @@ from tkinter import *
 from astropy.io import fits
 from tkinter.filedialog import askopenfilename
 from src.graphics import IntervalSelector
-from src.process import inputWindow
+from . import inputWindow
 import os
 import sys
 

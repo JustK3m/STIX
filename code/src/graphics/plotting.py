@@ -1292,16 +1292,16 @@ class Plotting:
 
 
 # Demo if file is run
-if __name__ == '__main__':
+#if __name__ == '__main__':
 
-    plots = Plotting(background.BackgroundWindow.fname)    # any input file with .fits extension
+    #plots = Plotting(background.BackgroundWindow.fname)    # any input file with .fits extension
 
-    plots.rate_vs_time_plotting()                       # plot Count Rate vs Time
-    plots.counts_vs_time_plotting()                     # plot Counts vs Time
-    plots.flux_vs_time_plotting()                       # plot Count Flux vs Time
-    plots.plot_spectrum_rate()                          # plot Count Rate vs Energy
-    plots.plot_spectrum_counts()                        # plot Counts vs Energy
-    plots.plot_spectrum_flux()                          # plot Flux vs Energy
-    plots.plot_spectrogram_rate()                       # plot Count Rate Spectrogram
-    plots.plot_spectrogram_counts()                     # plot Counts Spectrogram
-    plots.plot_spectrogram_flux()                       # plot Flux Spectrogram
+    #plots.rate_vs_time_plotting()                       # plot Count Rate vs Time
+    #plots.counts_vs_time_plotting()                     # plot Counts vs Time
+    #plots.flux_vs_time_plotting()                       # plot Count Flux vs Time
+    #plots.plot_spectrum_rate()                          # plot Count Rate vs Energy
+    #plots.plot_spectrum_counts()                        # plot Counts vs Energy
+    #plots.plot_spectrum_flux()                          # plot Flux vs Energy
+    #plots.plot_spectrogram_rate()                       # plot Count Rate Spectrogram
+    #plots.plot_spectrogram_counts()                     # plot Counts Spectrogram
+    #plots.plot_spectrogram_flux()                       # plot Flux Spectrogram

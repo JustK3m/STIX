@@ -6,92 +6,130 @@ from tkinter.filedialog import askopenfilename
 from astropy.utils.exceptions import AstropyUserWarning
 from matplotlib import pyplot as plt
 from astropy.io import fits
-from astropy.modeling import FittableModel, Parameter
-from astropy.modeling.fitting import LevMarLSQFitter, model_to_fit_params, fitter_to_model_params
+from astropy.modeling import FittableModel, Parameter, models
+from astropy.modeling.fitting import LevMarLSQFitter, model_to_fit_params, fitter_to_model_params, _NonLinearLSQFitter, \
+    Fitter
 from pandas.plotting import register_matplotlib_converters
 import numpy as np
-from src.process import background
+from . import background
 import tkinter as tk
 import os
 import sys
 import copy
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
-
+import logging
 
 register_matplotlib_converters()
 
-class LevMarCstatFitter(LevMarLSQFitter):
+class LevMarCstatFitter(_NonLinearLSQFitter):
+
     def __init__(self, calc_uncertainties=False):
         super().__init__(calc_uncertainties)
-        self.fit_info = {
-            "nfev": None,
-            "fvec": None,
-            "fjac": None,
-            "ipvt": None,
-            "qtf": None,
-            "message": None,
-            "ierr": None,
-            "param_jac": None,
-            "param_cov": None,
-        }
 
-    def _cstat(self, fps, model, x, y, weights=None):
-        """
-        Cash statistic function.
-        """
-        fitter_to_model_params(model, fps)
-
-        model_vals = model(x, y, weights)
-
-        # Sécurité numérique pour éviter log(0)
-        model_vals = np.clip(model_vals, 1e-12, None)
-
-        cstat = 2.0 * np.sum(model_vals - y * np.log(model_vals))
-
-        return cstat
-
-    def _run_fitter(
-        self, model, farg, fkwarg, maxiter, acc, epsilon, estimate_jacobian
-    ):
-        from scipy import optimize
-
-        init_values, _, _ = model_to_fit_params(model)
-
-        x = farg[0]
-        y = farg[1]
-
-        result = optimize.minimize(
-            self._cstat,
-            init_values,
-            args=(model, x, y),
-            method="L-BFGS-B",
-            options={"maxiter": maxiter, "ftol": acc},
+        # Configuration basique du logger (à adapter à ton projet)
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(levelname)s - %(message)s"
         )
 
-        fitparams = result.x
-        fitter_to_model_params(model, fitparams)
+        self.logger = logging.getLogger(__name__)
 
-        cov_x = None
-        if result.hess_inv is not None:
-            try:
-                cov_x = result.hess_inv.todense()
-            except Exception:
-                cov_x = result.hess_inv
 
-        self.fit_info["nfev"] = result.nfev
-        self.fit_info["message"] = result.message
-        self.fit_info["ierr"] = 0 if result.success else 5
-        self.fit_info["cov_x"] = cov_x
+    def log_fit_info(self, fit_info):
+        """
+        Affiche des logs dépendamment du contenu de fit_info.
 
-        if not result.success:
-            warnings.warn(
-                "Fit may be unsuccessful; check fit_info['message']",
-                AstropyUserWarning,
-            )
+        Parameters
+        ----------
+        fit_info : dict
+            Dictionnaire retourné par le fitter (par ex. CStatLevMarFitter.fit_info).
+        """
 
-        return init_values, fitparams, cov_x
+        if fit_info is None:
+            self.logger.warning("Aucune information de fit (fit_info est None).")
+            return
 
+        # 1) Statut global du fit
+        success = fit_info.get("success", None)
+        status = fit_info.get("status", None)
+        message = fit_info.get("message", "")
+
+        if success:
+            self.logger.info("Fit terminé avec succès.")
+        elif success is False:
+            self.logger.error("Fit NON convergent.")
+        else:
+            self.logger.warning("Statut de convergence inconnu (champ 'success' manquant).")
+
+        if status is not None:
+            self.logger.info(f"Code de statut du solveur : {status}")
+
+        if message:
+            self.logger.info(f"Message du solveur : {message}")
+
+        # 2) Infos numériques si disponibles
+        if "nfev" in fit_info:
+            self.logger.info(f"Nombre d'évaluations de la fonction : {fit_info['nfev']}")
+
+        if "cost" in fit_info:
+            self.logger.info(f"Valeur finale du coût (cost) : {fit_info['cost']}")
+
+        if "param_cov" in fit_info and fit_info["param_cov"] is not None:
+            self.logger.info("Matrice de covariance des paramètres disponible.")
+        else:
+            self.logger.info("Pas de matrice de covariance des paramètres.")
+
+        # 3) Champ générique pour debug (ex: jacobienne, résidus, etc.)
+        reste = {k: v for k, v in fit_info.items()
+                 if k not in ("success", "status", "message", "nfev", "cost", "param_cov")}
+        if reste:
+            self.logger.debug(f"Autres informations dans fit_info : {list(reste.keys())}")
+
+
+    def smart_init(self, model, x, y):
+        """Estimation rapide des paramètres à partir des données"""
+        if isinstance(model, models.Gaussian1D):
+            return [np.max(y), np.mean(x), np.std(x)]
+        # etc.
+        return model.parameters
+
+
+    def __call__(self, model, x, y, weights=None, **kwargs):
+        x, y = np.asarray(x), np.asarray(y)
+        n_points = len(x)
+        p0 = self.smart_init(model, x, y)
+
+        def residuals(p):
+            model.parameters = p
+            m = model(x)
+            m = np.clip(m, 1e-12, None)
+            return np.sqrt(2.0 * np.abs(m - y * np.log(m)))  # vectorisé
+
+        # LM moderne + Jacobienne
+        res = least_squares(
+            residuals, p0,
+            method='lm',
+            jac='2-point',
+            xtol=1e-6,  # tolérances moins strictes
+            ftol=1e-6,
+            max_nfev=3000,
+            **kwargs
+        )
+
+        model.parameters = res.x
+
+        # stocker des infos comme fit_info dans LevMarLSQFitter
+        self.fit_info = {
+            "nfev": res.nfev,
+            "cost": res.cost,
+            "status": res.status,
+            "message": res.message,
+            "success": res.success,
+            "param_cov": np.linalg.inv(res.jac.T.dot(res.jac)) * res.cost if res.success else None
+        }
+        self.log_fit_info(self.fit_info)
+        return model
 
 class Fitting:
     """
