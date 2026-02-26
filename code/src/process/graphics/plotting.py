@@ -10,8 +10,6 @@ from matplotlib import pyplot as plt
 from matplotlib import ticker as tck
 from pandas.plotting import register_matplotlib_converters
 
-from src.process import background, inputWindow
-
 from matplotlib.dates import AutoDateLocator, DateFormatter
 from datetime import datetime, timedelta
 
@@ -39,8 +37,6 @@ class Plotting:
             self.entire_file = False                        # Class will plot data for a reduced time range
         else:                                           # If "Entire File" checkbox is ticked:
             self.entire_file = True                         # Class will plot data for all time range
-
-
 
         self.counts = data['counts']                       # Matrix contaning the counts per band in function of time time
         self.times = data['time']                         # Index of times for x axis
