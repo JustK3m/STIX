@@ -2,7 +2,7 @@ from tkinter import *
 from tkinter.filedialog import askopenfilename
 from astropy.io import fits
 from astropy.table import Table
-from src.graphics import plotting
+from .graphics import plotting
 import os
 import sys
 
@@ -342,13 +342,17 @@ class InputWindow:
         """Calls the class to plot Spectrum, Time profile, Spectrogram.
         Parameters are taken from .fits file, chosen(loaded) by user."""
 
+        hdu = fits.open(self.name)  # Opening the file
+        data = InputWindow.extract_stix_data(hdu)  # Extracting data from the file
+        headers = InputWindow.extract_stix_header(hdu)  # Extracting header from the file
+
         # If entire file:
         if self.SetFromButton['state'] == 'disabled':
-            plots = plotting.Plotting(self.name)
+            plots = plotting.Plotting(data=data, headers=headers)
         # If not entire file:
         elif self.SetFromButton['state'] == 'normal':
             self.submit()
-            plots = plotting.Plotting(self.name, self.Times_range[0], self.Times_range[1], self.time_summarize[1])
+            plots = plotting.Plotting(self.Times_range[0], self.Times_range[1], self.time_summarize[1], data, headers)
         else:
             plots = None
             print('Error')

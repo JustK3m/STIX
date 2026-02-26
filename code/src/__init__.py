@@ -1,4 +1,4 @@
 from . import process
-from . import graphics
+from .process import graphics
 
 __all__ = ['process','graphics']

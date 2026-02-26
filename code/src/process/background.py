@@ -4,7 +4,7 @@ import re
 from tkinter import *
 from astropy.io import fits
 from tkinter.filedialog import askopenfilename
-from src.graphics import IntervalSelector
+from .graphics import IntervalSelector
 from . import inputWindow
 import os
 import sys
@@ -1434,7 +1434,7 @@ class BackgroundWindow:
 
     def spectrogram_interval(self, i):
         """Open spectrogram plot with graphical selection for background definition, bypassing the popup."""
-        from src.graphics import plotting
+        from .graphics import plotting
         import inputWindow
         import matplotlib.pyplot as plt
         from matplotlib.widgets import SpanSelector
@@ -1443,8 +1443,12 @@ class BackgroundWindow:
         # Create plotting instance using selected FITS file
         current_fname = BackgroundWindow.fname if BackgroundWindow.fname else inputWindow.InputWindow.fname
         print('fname:', BackgroundWindow.fname)
-        plot_instance = plotting.Plotting(current_fname)
-        # plot_instance = plotting.Plotting(second.InputWindow.fname)
+
+        hdu = fits.open(self.name)  # Opening the file
+        data = inputWindow.InputWindow.extract_stix_data(hdu)  # Extracting data from the file
+        headers = inputWindow.InputWindow.extract_stix_header(hdu)  # Extracting header from the file
+
+        plot_instance = plotting.Plotting(data=data, headers=headers)
 
         # ✅ Monkey-patch specgm_lim to avoid popup!
         def no_popup_specgm_lim():
