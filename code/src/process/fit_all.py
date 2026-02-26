@@ -6,9 +6,9 @@ from tkinter.filedialog import askopenfilename
 from astropy.utils.exceptions import AstropyUserWarning
 from matplotlib import pyplot as plt
 from astropy.io import fits
-from astropy.modeling import FittableModel, Parameter, models
-from astropy.modeling.fitting import LevMarLSQFitter, model_to_fit_params, fitter_to_model_params, _NonLinearLSQFitter, \
-    Fitter
+from astropy.modeling import models
+from astropy.modeling.fitting import LevMarLSQFitter, _NonLinearLSQFitter
+
 from pandas.plotting import register_matplotlib_converters
 import numpy as np
 from . import background
@@ -18,118 +18,11 @@ import sys
 import copy
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
-import logging
+
+from .fitting.fitters import LevMarCstatFitter
+from .fitting.methods import ForwardFolded
 
 register_matplotlib_converters()
-
-class LevMarCstatFitter(_NonLinearLSQFitter):
-
-    def __init__(self, calc_uncertainties=False):
-        super().__init__(calc_uncertainties)
-
-        # Configuration basique du logger (à adapter à ton projet)
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(levelname)s - %(message)s"
-        )
-
-        self.logger = logging.getLogger(__name__)
-
-
-    def log_fit_info(self, fit_info):
-        """
-        Affiche des logs dépendamment du contenu de fit_info.
-
-        Parameters
-        ----------
-        fit_info : dict
-            Dictionnaire retourné par le fitter (par ex. CStatLevMarFitter.fit_info).
-        """
-
-        if fit_info is None:
-            self.logger.warning("Aucune information de fit (fit_info est None).")
-            return
-
-        # 1) Statut global du fit
-        success = fit_info.get("success", None)
-        status = fit_info.get("status", None)
-        message = fit_info.get("message", "")
-
-        if success:
-            self.logger.info("Fit terminé avec succès.")
-        elif success is False:
-            self.logger.error("Fit NON convergent.")
-        else:
-            self.logger.warning("Statut de convergence inconnu (champ 'success' manquant).")
-
-        if status is not None:
-            self.logger.info(f"Code de statut du solveur : {status}")
-
-        if message:
-            self.logger.info(f"Message du solveur : {message}")
-
-        # 2) Infos numériques si disponibles
-        if "nfev" in fit_info:
-            self.logger.info(f"Nombre d'évaluations de la fonction : {fit_info['nfev']}")
-
-        if "cost" in fit_info:
-            self.logger.info(f"Valeur finale du coût (cost) : {fit_info['cost']}")
-
-        if "param_cov" in fit_info and fit_info["param_cov"] is not None:
-            self.logger.info("Matrice de covariance des paramètres disponible.")
-        else:
-            self.logger.info("Pas de matrice de covariance des paramètres.")
-
-        # 3) Champ générique pour debug (ex: jacobienne, résidus, etc.)
-        reste = {k: v for k, v in fit_info.items()
-                 if k not in ("success", "status", "message", "nfev", "cost", "param_cov")}
-        if reste:
-            self.logger.debug(f"Autres informations dans fit_info : {list(reste.keys())}")
-
-
-    def smart_init(self, model, x, y):
-        """Estimation rapide des paramètres à partir des données"""
-        if isinstance(model, models.Gaussian1D):
-            return [np.max(y), np.mean(x), np.std(x)]
-        # etc.
-        return model.parameters
-
-
-    def __call__(self, model, x, y, weights=None, **kwargs):
-        x, y = np.asarray(x), np.asarray(y)
-        n_points = len(x)
-        p0 = self.smart_init(model, x, y)
-
-        def residuals(p):
-            model.parameters = p
-            m = model(x)
-            m = np.clip(m, 1e-12, None)
-            return np.sqrt(2.0 * np.abs(m - y * np.log(m)))  # vectorisé
-
-        # LM moderne + Jacobienne
-        res = least_squares(
-            residuals, p0,
-            method='lm',
-            jac='2-point',
-            xtol=1e-6,  # tolérances moins strictes
-            ftol=1e-6,
-            max_nfev=3000,
-            **kwargs
-        )
-
-        model.parameters = res.x
-
-        # stocker des infos comme fit_info dans LevMarLSQFitter
-        self.fit_info = {
-            "nfev": res.nfev,
-            "cost": res.cost,
-            "status": res.status,
-            "message": res.message,
-            "success": res.success,
-            "param_cov": np.linalg.inv(res.jac.T.dot(res.jac)) * res.cost if res.success else None
-        }
-        self.log_fit_info(self.fit_info)
-        return model
 
 class Fitting:
     """
@@ -1127,351 +1020,6 @@ class Fitting:
         """Closing 'SPEX Fit Options' window"""
         self.top2.destroy()
 
-    # function to calculate the flux
-    def integrate_flux(e1, e2, model_func, n_points=10):
-        energies = np.linspace(e1, e2, n_points)
-        fluxes = model_func(energies)
-        return np.trapz(fluxes, energies) / (e2 - e1)
-
-
-    class ForwardFoldedPowerLaw(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-        # x_0 = 100.0  # énergie pivot en keV, fixe ici
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_pivot = E_pivot
-
-        def evaluate(self, x, amplitude, alpha):
-            model_func = lambda E: amplitude * (E / self.E_pivot) ** (-alpha)
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-
-    # === Forward Folded Broken Power Law ===
-    class ForwardFoldedBrokenPowerLaw(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        E_break = Parameter(default=10.0)
-        alpha_1 = Parameter(default=2.0)
-        alpha_2 = Parameter(default=3.0)
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-
-        def evaluate(self, x, amplitude, E_break, alpha_1, alpha_2):
-            def model_func(E):
-                return amplitude * np.where(E < E_break, (E / E_break)**(-alpha_1), (E / E_break)**(-alpha_2))
-
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-    # === Forward Folded VTH ===
-    class ForwardFoldedVTH(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        # T = Parameter(default=10.0)      # Température en keV
-        # EM = Parameter(default=1e49)     # Emission Measure en cm^-3
-
-        EM = Parameter(default=1e48, bounds=(1e44, 1e52))
-        T = Parameter(default=1.0, bounds=(0.1, 50.0))
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-
-        def evaluate(self, x, EM, T):
-            # Constantes
-            gff = 1.2
-            A = 1.07e-42 * gff
-
-            # Sécurité : éviter division par zéro ou valeurs négatives
-            safe_T = max(1e-3, T)
-
-            def thermal_model(E):
-                return (A * EM) / (E * np.sqrt(safe_T)) * np.exp(-E / safe_T)
-
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, thermal_model)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-    # === Forward Folded Exponential Power Law ===
-    class ForwardFoldedExpPowerLaw(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        p0 = Parameter(default=1.0)
-        p1 = Parameter(default=-2.0)
-        p2 = Parameter(default=20.0)
-        e3 = Parameter(default=1.0)
-        e4 = Parameter(default=10.0)
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-
-        def evaluate(self, x, p0, p1, p2, e3, e4):
-            def model_func(E):
-                safe_E = np.where(E <= 0, 1e-6, E)
-                return (p0 * (safe_E / p2)**p1) * np.exp(e3 - safe_E / e4)
-
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-    
-    # === Forward Folded VTH + Power Law ===
-    class ForwardFoldedVTHPlusPowerLaw(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        # Paramètres VTH
-        EM = Parameter(default=1e48, bounds=(1e44, 1e52))
-        T = Parameter(default=1.0, bounds=(0.1, 50.0))
-
-        # Paramètres Power Law
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot = 100.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_pivot = E_pivot
-
-        def evaluate(self, x, EM, T, amplitude, alpha):
-            # Constante de Gaunt
-            gff = 1.2
-            A = 1.07e-42 * gff
-            safe_T = max(1e-3, T)
-
-            def model_total(E):
-                # Thermal component
-                thermal = (A * EM) / (E * np.sqrt(safe_T)) * np.exp(-E / safe_T)
-                # Power-law component
-                power = amplitude * (E / self.E_pivot) ** (-alpha)
-                return thermal + power
-
-            # Intégration du flux photonique dans chaque bin SRM
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_total)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-
-            # Forward-folding via SRM
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-
-    class ForwardFoldedPowerLawCutoffFix(FittableModel):
-        """
-        Power law avec cutoff fixe (E_c constant mais modifiable par l'utilisateur).
-        P(E) = A * E^-alpha si E >= E_c, sinon 0
-        """
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_cut=10.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_cut = E_cut  
-
-        def evaluate(self, x, amplitude, alpha):
-            # def model_func(E):
-            #     return np.where(E >= self.E_cut,
-            #                     amplitude * (E) ** (-alpha),
-            #                     1)
-            
-            model_func = lambda E: np.where(E >= self.E_cut, amplitude * (E) ** (-alpha), 0.0)
-
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-
-    class ForwardFoldedPowerLawCutoffFree(FittableModel):
-        """
-        Power law avec cutoff libre (E_c est un Parameter ajusté).
-        P(E) = A * E^-alpha si E >= E_c, sinon 0
-        """
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-        E_cut = Parameter(default=10.0, bounds=(1.0, 1e3))  # cutoff fitté
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-
-        def evaluate(self, x, amplitude, alpha, E_cut):
-            def model_func(E):
-                return np.where(E >= E_cut,
-                                amplitude * np.maximum(E, 1e-6) ** (-alpha),
-                                0.0)
-
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return np.nan_to_num(folded, nan=0.0, posinf=0.0, neginf=0.0)
-
-
-
-    class ForwardFoldedVTHPlusPowerLawCutoffFix(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        # Paramètres VTH
-        EM = Parameter(default=1e48, bounds=(1e44, 1e52))
-        T = Parameter(default=1.0, bounds=(0.1, 50.0))
-
-        # Paramètres Power Law
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_cut=10.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_cut = E_cut
-
-        def evaluate(self, x, EM, T, amplitude, alpha):
-            # Constante de Gaunt
-            gff = 1.2
-            A = 1.07e-42 * gff
-            safe_T = max(1e-3, T)
-
-            def model_total(E):
-                # Thermal component
-                thermal = (A * EM) / (E * np.sqrt(safe_T)) * np.exp(-E / safe_T)
-                # Power-law component
-                # power = amplitude * (E / self.E_pivot) ** (-alpha)
-                power = np.where(E >= self.E_cut, amplitude * (E) ** (-alpha), 0.0)
-                return thermal + power
-
-            # Intégration du flux photonique dans chaque bin SRM
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_total)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-
-            # Forward-folding via SRM
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-
-    class ForwardFoldedPowerLawHardCutoff(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-        E_cut = Parameter(default=3.0)  # coupure dure
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_pivot = E_pivot
-
-        def evaluate(self, x, amplitude, alpha, E_cut):
-            # Power law avec coupure dure
-            model_func = lambda E: np.where(
-                E >= E_cut,
-                amplitude * (E / self.E_pivot) ** (-alpha),
-                0.0
-            )
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
-
-    class ForwardFoldedPowerLawCutoff(FittableModel):
-        n_inputs = 1
-        n_outputs = 1
-
-        amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0)
-        E_cut = Parameter(default=10.0)  # nouveau paramètre
-
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-            super().__init__(**kwargs)
-            self.e_low_true = e_low_true
-            self.e_high_true = e_high_true
-            self.matrix = matrix
-            self.exposure = exposure
-            self.E_pivot = E_pivot
-
-        def evaluate(self, x, amplitude, alpha, E_cut):
-            model_func = lambda E: amplitude * (E / self.E_pivot) ** (-alpha) * np.exp(-E / E_cut)
-            true_fluxes = np.array([
-                Fitting.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
-            folded = np.dot(true_fluxes, self.matrix) / self.exposure
-            return folded
-
 
     def ask_custom_yesno(title, message):
         win = Toplevel()
@@ -1510,7 +1058,7 @@ class Fitting:
         win.wait_window()
         return result["value"]
 
-    
+
 
     def ask_photon_axes_scale(self):
         """Ouvre une popup centrée pour choisir les échelles X et Y du graphe photonique."""
@@ -1620,7 +1168,7 @@ class Fitting:
                     par.value = init_val
                 except Exception as exc:
                     print(f"⚠️ Failed to set {pname}: {exc}")
-    
+
 
     def _params_vector_to_model(self, model_template, param_names, vec):
         """
@@ -2034,7 +1582,7 @@ class Fitting:
 
                 self.fit_model = 'Power Law'
                 model_key = "PowerLaw1D"
-                # model_fit = Fitting.ForwardFoldedPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                # model_fit = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
 
                 # # # Apply user-defined initial values and bounds
                 # self._apply_param_bounds(model_fit, model_key)
@@ -2052,7 +1600,7 @@ class Fitting:
 
                 # 1) préparer un template (sans bornes forcées) et appliquer les valeurs initiales souhaitées
                 E_pivot_val = self.user_param_values.get(model_key, {}).get("E_pivot", 100.0)
-                model_template = Fitting.ForwardFoldedPowerLaw(e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
+                model_template = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
@@ -2074,7 +1622,7 @@ class Fitting:
                 print(f"Fitted Power Law: amplitude = {amplitude:.2e}, alpha = {alpha:.2f}, E_pivot = {E_pivot_val:.2f} keV")
 
                 # Construire modèle complet pour affichage (optionnel — comme tu fais ailleurs)
-                model_display = Fitting.ForwardFoldedPowerLaw(e_low_true, e_high_true, matrix, exposure, E_pivot=E_pivot_val)
+                model_display = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix, exposure, E_pivot=E_pivot_val)
                 try:
                     model_display.amplitude = fitted_model.amplitude
                     model_display.alpha = fitted_model.alpha
@@ -2123,7 +1671,7 @@ class Fitting:
                     # --- Photon ---
                     model_func = lambda E: amplitude * (E / E_pivot_val)**(-alpha)
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2155,7 +1703,7 @@ class Fitting:
                 self.fit_model = 'Broken Power Law'
                 model_key = "BrokenPowerLaw1D"
 
-                # model_fit = Fitting.ForwardFoldedBrokenPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                # model_fit = ForwardFolded.BrokenPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
 
                 # # Apply user-defined initial values and bounds
                 # self._apply_param_bounds(model_fit, model_key)
@@ -2165,7 +1713,7 @@ class Fitting:
                 # fitted_model = fitter(model_fit, x_fit, counts_fit / exposure,
                 #                     weights=1.0 / (counts_err_fit / exposure))
                 
-                model_template = Fitting.ForwardFoldedBrokenPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                model_template = ForwardFolded.BrokenPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
                 param_names = list(Fitting.default_param_values.get(model_key, {}).keys())
                 internal_bounds_map = Fitting.default_param_bounds.get(model_key, {})
                 user_bounds_map = self.user_param_bounds.get(model_key, internal_bounds_map)
@@ -2188,7 +1736,7 @@ class Fitting:
                 alpha_2 = fitted_model.alpha_2.value
 
                 # Modèle complet pour affichage sur tout le domaine
-                model_display = Fitting.ForwardFoldedBrokenPowerLaw(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.BrokenPowerLaw(e_low_true, e_high_true, matrix, exposure)
                 model_display.amplitude = fitted_model.amplitude
                 model_display.alpha_1 = fitted_model.alpha_1
                 model_display.alpha_2 = fitted_model.alpha_2
@@ -2234,7 +1782,7 @@ class Fitting:
                     # --- Photon ---
                     model_func = lambda E: amplitude * np.where(E < E_break, (E / E_break)**(-alpha_1), (E / E_break)**(-alpha_2))
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2266,7 +1814,7 @@ class Fitting:
                 self.fit_model = 'Exponential Power Law'
                 model_key = "Single Power Law Times an Exponential"
 
-                # model_fit = Fitting.ForwardFoldedExpPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                # model_fit = ForwardFolded.ExpPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
 
                 # # Apply user-defined initial values and bounds
                 # self._apply_param_bounds(model_fit, model_key)
@@ -2277,7 +1825,7 @@ class Fitting:
                 #                     weights=1.0 / (counts_err_fit / exposure))
                 
 
-                model_template = Fitting.ForwardFoldedExpPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                model_template = ForwardFolded.ExpPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
                 param_names = list(Fitting.default_param_values.get(model_key, {}).keys())
                 internal_bounds_map = Fitting.default_param_bounds.get(model_key, {})
                 user_bounds_map = self.user_param_bounds.get(model_key, internal_bounds_map)
@@ -2301,7 +1849,7 @@ class Fitting:
                 e4 = fitted_model.e4.value
 
                 # Modèle complet pour affichage sur tout le domaine
-                model_display = Fitting.ForwardFoldedExpPowerLaw(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.ExpPowerLaw(e_low_true, e_high_true, matrix, exposure)
                 model_display.p0 = fitted_model.p0
                 model_display.p1 = fitted_model.p1 
                 model_display.p2 = fitted_model.p2
@@ -2348,7 +1896,7 @@ class Fitting:
                     # --- Photon ---
                     model_func = lambda E: (p0 * (E / p2)**p1) * np.exp(e3 - E / e4)
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2378,7 +1926,7 @@ class Fitting:
                 
                 self.fit_model = 'VTH'
                 model_key = "V_TH"
-                # model_fit = Fitting.ForwardFoldedVTH(e_low_true, e_high_true, matrix_fit, exposure)
+                # model_fit = ForwardFolded.VTH(e_low_true, e_high_true, matrix_fit, exposure)
 
                 # # Apply user-defined initial values and bounds
                 # self._apply_param_bounds(model_fit, model_key)
@@ -2389,7 +1937,7 @@ class Fitting:
                 #                     weights=1.0 / (counts_err_fit / exposure))
                 
 
-                model_template = Fitting.ForwardFoldedVTH(e_low_true, e_high_true, matrix_fit, exposure)
+                model_template = ForwardFolded.VTH(e_low_true, e_high_true, matrix_fit, exposure)
                 param_names = list(Fitting.default_param_values.get(model_key, {}).keys())
                 internal_bounds_map = Fitting.default_param_bounds.get(model_key, {})
                 user_bounds_map = self.user_param_bounds.get(model_key, internal_bounds_map)
@@ -2407,7 +1955,7 @@ class Fitting:
                 T = fitted_model.T.value
                 EM = fitted_model.EM.value
 
-                model_display = Fitting.ForwardFoldedVTH(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.VTH(e_low_true, e_high_true, matrix, exposure)
                 model_display.T = fitted_model.T
                 model_display.EM = fitted_model.EM
 
@@ -2453,7 +2001,7 @@ class Fitting:
 
                     model_func = lambda E: (A * EM) / (E * np.sqrt(T)) * np.exp(-E / T_keV)
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2483,7 +2031,7 @@ class Fitting:
 
                 self.fit_model = 'V_TH + Power Law'
                 model_key = "V_TH + PowerLaw"               
-                # model_fit = Fitting.ForwardFoldedVTHPlusPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                # model_fit = ForwardFolded.VTHPlusPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
 
 
                 # # Apply user-defined initial values and bounds
@@ -2494,7 +2042,7 @@ class Fitting:
                 #                     weights=1.0 / (counts_err_fit / exposure))
                 
                 E_pivot_val = self.user_param_values.get(model_key, {}).get("E_pivot", 100.0)
-                model_template = Fitting.ForwardFoldedVTHPlusPowerLaw(e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
+                model_template = ForwardFolded.VTHPlusPowerLaw(e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
                 param_names = [
                     p for p in Fitting.default_param_values[model_key].keys()
                     if p != "E_pivot"
@@ -2519,7 +2067,7 @@ class Fitting:
                 alpha = fitted_model.alpha.value
 
                 # Création du modèle à afficher sur tout le domaine
-                model_display = Fitting.ForwardFoldedVTHPlusPowerLaw(e_low_true, e_high_true, matrix, exposure, E_pivot=E_pivot_val)
+                model_display = ForwardFolded.VTHPlusPowerLaw(e_low_true, e_high_true, matrix, exposure, E_pivot=E_pivot_val)
                 model_display.EM = fitted_model.EM
                 model_display.T = fitted_model.T
                 model_display.amplitude = fitted_model.amplitude
@@ -2572,7 +2120,7 @@ class Fitting:
                     )
 
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2613,7 +2161,7 @@ class Fitting:
                 model_key = "PowerLawCutoffFix"
 
                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
-                model_template = Fitting.ForwardFoldedPowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                model_template = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
@@ -2630,7 +2178,7 @@ class Fitting:
                 amplitude = fitted_model.amplitude.value
                 alpha = fitted_model.alpha.value
 
-                model_display = Fitting.ForwardFoldedPowerLaw(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix, exposure)
                 try:
                     model_display.amplitude = fitted_model.amplitude
                     model_display.alpha = fitted_model.alpha
@@ -2682,7 +2230,7 @@ class Fitting:
                     # Should be verify because it's not true
                     model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E) ** (-alpha), 0.0)
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 
@@ -2737,7 +2285,7 @@ class Fitting:
                 # # Fonction coût en log-log
                 # def cost(params):
                 #     amp, alpha, ecut = params
-                #     model_func = Fitting.ForwardFoldedPowerLawCutoff(
+                #     model_func = ForwardFolded.PowerLawCutoff(
                 #         e_low_true, e_high_true, matrix_fit, exposure
                 #     )
                 #     model_func.amplitude.value = amp
@@ -2759,7 +2307,7 @@ class Fitting:
                 # amplitude, alpha, E_cut_val = result.x
 
                 # # --- Reconstruction du modèle final ---
-                # model_display = Fitting.ForwardFoldedPowerLawCutoff(
+                # model_display = ForwardFolded.PowerLawCutoff(
                 #     e_low_true, e_high_true, matrix, exposure
                 # )
                 # model_display.amplitude.value = amplitude
@@ -2819,7 +2367,7 @@ class Fitting:
                 # Fonction coût linéaire (moindres carrés pondérés)
                 def cost(params):
                     amp, alpha, ecut = params
-                    model_func = Fitting.ForwardFoldedPowerLawCutoff(
+                    model_func = ForwardFolded.PowerLawCutoff(
                         e_low_true, e_high_true, matrix_fit, exposure
                     )
                     model_func.amplitude.value = amp
@@ -2842,7 +2390,7 @@ class Fitting:
                 amplitude, alpha, E_cut_val = result.x
 
                 # --- Reconstruction du modèle complet ---
-                model_display = Fitting.ForwardFoldedPowerLawCutoff(
+                model_display = ForwardFolded.PowerLawCutoff(
                     e_low_true, e_high_true, matrix, exposure
                 )
                 model_display.amplitude.value = amplitude
@@ -2896,7 +2444,7 @@ class Fitting:
                 
 
                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
-                model_template = Fitting.ForwardFoldedVTHPlusPowerLawCutoffFix(e_low_true, e_high_true, matrix_fit, exposure, E_cut_val)
+                model_template = ForwardFolded.VTHPlusPowerLawCutoffFix(e_low_true, e_high_true, matrix_fit, exposure, E_cut_val)
                 param_names = [
                     p for p in Fitting.default_param_values[model_key].keys()
                     if p != "E_cut"
@@ -2920,7 +2468,7 @@ class Fitting:
                 alpha = fitted_model.alpha.value
 
                 # Création du modèle à afficher sur tout le domaine
-                model_display = Fitting.ForwardFoldedVTHPlusPowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure, E_cut_val)
+                model_display = ForwardFolded.VTHPlusPowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure, E_cut_val)
                 model_display.EM = fitted_model.EM
                 model_display.T = fitted_model.T
                 model_display.amplitude = fitted_model.amplitude
@@ -2978,7 +2526,7 @@ class Fitting:
                     )
 
                     flux_photons = np.array([
-                        Fitting.integrate_flux(e1, e2, model_func)
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
                     ])
 

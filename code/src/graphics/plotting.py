@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib import ticker as tck
 from pandas.plotting import register_matplotlib_converters
 
-from src.process import background, inputWindow
+from src.process import inputWindow
 
 from matplotlib.dates import AutoDateLocator, DateFormatter
 from datetime import datetime, timedelta
