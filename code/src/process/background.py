@@ -1435,7 +1435,7 @@ class BackgroundWindow:
     def spectrogram_interval(self, i):
         """Open spectrogram plot with graphical selection for background definition, bypassing the popup."""
         from .graphics import plotting
-        import inputWindow
+
         import matplotlib.pyplot as plt
         from matplotlib.widgets import SpanSelector
         import numpy as np
@@ -1467,7 +1467,7 @@ class BackgroundWindow:
         plot_instance.specgm_lim = no_popup_specgm_lim
 
         # ✅ Now call the spectrogram plotting - will use our no-popup version
-        plot_instance._Input__plot_spectrogram('rate')
+        plot_instance._Plotting__plot_spectrogram('rate')
 
         # Add selector for time
         from matplotlib import dates as mdates

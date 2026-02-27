@@ -22,7 +22,7 @@ class Plotting:
     """Class to load the parameters from input data, data times, and plot Spectrum, Time Profile and Spectrogram.
        Called Units: Rate, Counts, Flux."""
 
-    def __init__(self, file, start=None, end=None, hours=None):
+    def __init__(self, start=None, end=None, hours=None, data=None, headers=None):
         """When opening the .fits file, the returned object, called hdulist, behaves like a Python list and each element
         maps to a Header - Data Unit(HDU). We are primarily interested in RATE extension which contains the spectral
         data. Extracted object has two important attributes: data, which behaves like an array, can be used to access
@@ -40,11 +40,7 @@ class Plotting:
         else:                                           # If "Entire File" checkbox is ticked:
             self.entire_file = True                         # Class will plot data for all time range
 
-        data, data_energies, header_dates, header_energy = self.__load_data(file)  # Loading data
 
-        hdu = fits.open(file)  # Opening the file
-        data = inputWindow.InputWindow.extract_stix_data(hdu)  # Extracting data from the file
-        headers = inputWindow.InputWindow.extract_stix_header(hdu)  # Extracting header from the file
 
         self.counts = data['counts']                       # Matrix contaning the counts per band in function of time time
         self.times = data['time']                         # Index of times for x axis

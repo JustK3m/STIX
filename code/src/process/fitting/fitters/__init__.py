@@ -1,3 +1,3 @@
-from LevMarCstatFitter import LevMarCstatFitter
+from .LevMarCstatFitter import LevMarCstatFitter
 
 __all__ = ['LevMarCstatFitter']

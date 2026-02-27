@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-from astropy.modeling import models
 from astropy.modeling.fitting import _NonLinearLSQFitter
 from scipy.optimize import least_squares
 
@@ -18,7 +17,6 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         )
 
         self.logger = logging.getLogger(__name__)
-
 
     def log_fit_info(self, fit_info):
         """
@@ -70,19 +68,9 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         if reste:
             self.logger.debug(f"Autres informations dans fit_info : {list(reste.keys())}")
 
-
-    def smart_init(self, model, x, y):
-        """Estimation rapide des paramètres à partir des données"""
-        if isinstance(model, models.Gaussian1D):
-            return [np.max(y), np.mean(x), np.std(x)]
-        # etc.
-        return model.parameters
-
-
     def __call__(self, model, x, y, weights=None, **kwargs):
         x, y = np.asarray(x), np.asarray(y)
-        n_points = len(x)
-        p0 = self.smart_init(model, x, y)
+        p0 = model.parameters
 
         def residuals(p):
             model.parameters = p
@@ -95,8 +83,8 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
             residuals, p0,
             method='lm',
             jac='2-point',
-            xtol=1e-6,  # tolérances moins strictes
-            ftol=1e-6,
+            xtol=1e-7,  # tolérances moins strictes
+            ftol=1e-7,
             max_nfev=3000,
             **kwargs
         )

@@ -107,7 +107,7 @@ filemenu = Menu(mainmenu, tearoff=0)
 windowmenu = Menu(mainmenu, tearoff=0)
 helpmenu = Menu(mainmenu, tearoff=0)
 
-filemenu.add_command(label="Select Plotting ...", command=SelectInput)
+filemenu.add_command(label="Select Input ...", command=SelectInput)
 filemenu.add_command(label="Select Background ...", command=SelectBackground)
 # filemenu.add_command(label="Select Fit Options and Do Fit (Test) ...", command=Fitting)
 filemenu.add_command(label="Plot Fit Results ...", command=ResponseFitting)
