@@ -38,15 +38,7 @@ jobs:
     - name: Build binary with PyInstaller
       run: |
         cd code
-        pyinstaller \
-          --onefile \
-          --windowed \
-          --noconsole \
-          ${{ runner.os == 'Windows' && '--add-data "data;data"' || '--add-data "data:data"' }} \
-          --name "STIX-Solar-Orbiter" \
-          --paths=src \
-          --hidden-import matplotlib.backends.backend_tkagg \
-          src/main.py
+        pyinstaller --onefile --windowed --noconsole --add-data "data;data" --name "STIX Solor Orbiter" --paths=src --hidden-import matplotlib.backends.backend_tkagg src/main.py
 
     - name: Upload binary
       uses: actions/upload-artifact@v4
