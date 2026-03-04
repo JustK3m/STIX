@@ -1,4 +1,5 @@
 import logging
+from tkinter import StringVar, Variable
 
 import numpy as np
 from astropy.modeling.fitting import _NonLinearLSQFitter
@@ -74,18 +75,21 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
 
         def residuals(p):
             model.parameters = p
+            w = weights
             m = model(x)
             m = np.clip(m, 1e-12, None)
-            return np.sqrt(2.0 * np.abs(m - y * np.log(m)))  # vectorisé
+            c_i = 2.0 * np.abs(m - y * np.log(m))
+            if w is not None:
+                w = np.asarray(w)
+                if w.shape != m.shape:
+                    raise ValueError("weights must have same shape as data")
+                c_i = c_i * w
+            return np.asarray(c_i)  # vectorisé
 
-        # LM moderne + Jacobienne
+        # LM moderne
         res = least_squares(
             residuals, p0,
             method='lm',
-            jac='2-point',
-            xtol=1e-7,  # tolérances moins strictes
-            ftol=1e-7,
-            max_nfev=3000,
             **kwargs
         )
 
@@ -98,7 +102,7 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
             "status": res.status,
             "message": res.message,
             "success": res.success,
-            "param_cov": np.linalg.inv(res.jac.T.dot(res.jac)) * res.cost if res.success else None
+            #"param_cov": np.linalg.inv(res.jac.T.dot(res.jac)) * res.cost if res.success else None
         }
         self.log_fit_info(self.fit_info)
         return model

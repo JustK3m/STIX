@@ -402,7 +402,7 @@ class Fitting:
         #     Button(newwin, text="Save", command=save_params, bg='green', fg='white').pack(pady=12)
 
 
-        def Set_Function():
+        def  Set_Function():
             """Fenêtre pour définir valeur initiale (default), min et max de chaque paramètre du modèle sélectionné."""
             try:
                 idx = self.lbox.curselection()[0]
@@ -445,36 +445,36 @@ class Fitting:
                 row = Frame(form_frame, bg="#f7f9fc")
                 row.pack(pady=6, fill="x")
 
-                Label(row, text=f"{param}:", width=14, anchor="w", bg="#f7f9fc").pack(side=LEFT)
+                Label(row, text=f"{param}:", width=14, anchor="w", bg="#f7f9fc").pack(side="left")
 
                 # --- Cas spécial : E_pivot n'a pas de Min/Max ---
                 if (model_key == "PowerLaw1D" or model_key=="V_TH + PowerLaw" or model_key=="PowerLawCutoffFix" 
                     or model_key=="PowerLawCutoffFree" or model_key=="V_TH + PowerLawCutoffFix") and (param == "E_pivot"  or param == "E_cut") :
 
-                    Label(row, text="Value:", bg="#f7f9fc").pack(side=LEFT)
+                    Label(row, text="Value:", bg="#f7f9fc").pack(side="left")
                     e_def = Entry(row, width=10)
                     e_def.insert(0, disp_default)
-                    e_def.pack(side=LEFT, padx=6)
+                    e_def.pack(side="left", padx=6)
 
                     self.param_entries[param] = (e_def, None, None)
                     initial_display[param] = (disp_default, "", "")
                     continue
 
                 # --- Cas normal : Default + Min + Max ---
-                Label(row, text="Default:", bg="#f7f9fc").pack(side=LEFT)
+                Label(row, text="Default:", bg="#f7f9fc").pack(side="left")
                 e_def = Entry(row, width=10)
                 e_def.insert(0, disp_default)
-                e_def.pack(side=LEFT, padx=6)
+                e_def.pack(side="left", padx=6)
 
-                Label(row, text="Min:", bg="#f7f9fc").pack(side=LEFT)
+                Label(row, text="Min:", bg="#f7f9fc").pack(side="left")
                 e_min = Entry(row, width=10)
                 e_min.insert(0, disp_min)
-                e_min.pack(side=LEFT, padx=6)
+                e_min.pack(side="left", padx=6)
 
-                Label(row, text="Max:", bg="#f7f9fc").pack(side=LEFT)
+                Label(row, text="Max:", bg="#f7f9fc").pack(side="left")
                 e_max = Entry(row, width=10)
                 e_max.insert(0, disp_max)
-                e_max.pack(side=LEFT, padx=6)
+                e_max.pack(side="left", padx=6)
 
                 self.param_entries[param] = (e_def, e_min, e_max)
                 initial_display[param] = (disp_default, disp_min, disp_max)
@@ -552,13 +552,13 @@ class Fitting:
             btn_frame.pack(pady=20)
 
             Button(btn_frame, text="Save", command=save_params,
-                bg="#16a34a", fg="white", width=12).pack(side=LEFT, padx=10)
+                bg="#16a34a", fg="white", width=12).pack(side="left", padx=10)
 
             Button(btn_frame, text="Reset to Defaults", command=reset_defaults,
-                bg="#f97316", fg="white", width=16).pack(side=LEFT, padx=10)
+                bg="#f97316", fg="white", width=16).pack(side="left", padx=10)
 
             Button(btn_frame, text="Cancel", command=cancel_window,
-                bg="#ef4444", fg="white", width=12).pack(side=LEFT, padx=10)
+                bg="#ef4444", fg="white", width=12).pack(side="left", padx=10)
 
 
         self.lblFunc = Label(self.top2, text="Set function components: ")  # name the scrollbar
@@ -575,6 +575,7 @@ class Fitting:
             lkupStatistic = { "C-stat" : LevMarCstatFitter(), "Chi2": LevMarLSQFitter()}
             self.fitter = lkupStatistic[name]
             self.menuStat.config(text=name)
+
 
         self.menuStat = tk.Menubutton(self.top2, text="Chi2", relief="raised")
         self.menuStat.place(relx=0.85, rely=0.35, relheight=0.05, relwidth=0.13)
@@ -1042,8 +1043,8 @@ class Fitting:
         button_frame = Frame(win)
         button_frame.pack(pady=10)
 
-        Button(button_frame, text="Yes", width=10, command=on_yes).pack(side=LEFT, padx=5)
-        Button(button_frame, text="No", width=10, command=on_no).pack(side=LEFT, padx=5)
+        Button(button_frame, text="Yes", width=10, command=on_yes).pack(side="left", padx=5)
+        Button(button_frame, text="No", width=10, command=on_no).pack(side="left", padx=5)
 
         # ✅ Center the window on the screen
         win.update_idletasks()

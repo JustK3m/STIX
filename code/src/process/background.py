@@ -303,7 +303,7 @@ class BackgroundWindow:
         """If none of the checkboxes "Background" and "Data-Background" are ticked, disables all buttons in frame 4;
         else, enables them."""
 
-        # If the user (un)selects background or data-background for the plot, enales or disables all background options
+        # If the user (un)selects background or data-background for the plot, enables or disables all background options
         if self.var_bkg.get() + self.var_data_bkg.get() < 2 and self.backup_bkg < 2:
             if self.state_bkg == NORMAL:
                 if self.frame4:
