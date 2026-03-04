@@ -5,57 +5,88 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45  # ← Pour tes paquets astro lourds
-    
+  build-windows:
+    runs-on: windows-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-
-    - name: Cache pip  # ← Évite de tout retélécharger
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ env.pythonLocation }}/lib/python3.11/site-packages
-          ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install --only-binary=all -r requirements.txt --timeout 600
-        pip install pyinstaller
-
-    - name: Build binary with PyInstaller
-      run: |
-        cd code
-        if [ "${{ runner.os }}" = "Windows" ]; then
+      - name: Checkout repository
+        uses: actions/checkout@v4
+  
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+  
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\hostedtoolcache\windows\Python\3.11\*\Lib\site-packages
+            C:\Users\runner\.cache\pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+  
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --only-binary=all -r requirements.txt --timeout 600
+          pip install pyinstaller
+  
+      - name: Build EXE with PyInstaller
+        run: |
+          cd code
           pyinstaller --onefile --windowed --noconsole ^
             --add-data "data;data" ^
             --name "STIX-Solar-Orbiter" ^
             --paths=src ^
             --hidden-import matplotlib.backends.backend_tkagg ^
             src/main.py
-        else
+  
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/*.exe
+          
+  build-unix:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+  
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+  
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.pythonLocation }}/lib/python3.11/site-packages
+            ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+  
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --only-binary=all -r requirements.txt --timeout 600
+          pip install pyinstaller
+  
+      - name: Build binary with PyInstaller
+        run: |
+          cd code
           pyinstaller --onefile --windowed --noconsole \
             --add-data "data:data" \
             --name "STIX-Solar-Orbiter" \
             --paths=src \
             --hidden-import matplotlib.backends.backend_tkagg \
             src/main.py
-        fi
+  
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-binary
+          path: dist/*
 
-    - name: Upload binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ runner.os }}-binary
-        path: dist/*
