@@ -31,15 +31,7 @@ jobs:
       - name: Build EXE with PyInstaller
         run: |
           cd code
-          pyinstaller ^
-            --onefile ^
-            --windowed ^
-            --noconsole ^
-            --add-data "data;data" ^
-            --name "STIX Solor Orbiter" ^
-            --paths=src ^
-            --hidden-import matplotlib.backends.backend_tkagg ^
-            src/main.py
+          pyinstaller --onefile --windowed --noconsole --add-data "data;data" --name "STIX Solor Orbiter" --paths=src --hidden-import matplotlib.backends.backend_tkagg src/main.py
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
