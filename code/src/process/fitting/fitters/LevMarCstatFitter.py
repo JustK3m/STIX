@@ -18,6 +18,10 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         )
 
         self.logger = logging.getLogger(__name__)
+        self.max_iter = Variable(value=500)
+        self.x_tol = Variable(value=1e-8)
+        self.f_tol = Variable(value=1e-8)
+        self.g_tol = Variable(value=1e-8)
 
     def log_fit_info(self, fit_info):
         """
@@ -78,7 +82,7 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
             w = weights
             m = model(x)
             m = np.clip(m, 1e-12, None)
-            c_i = 2.0 * np.abs(m - y * np.log(m))
+            c_i = 2.0 * (m - y * np.log(m))
             if w is not None:
                 w = np.asarray(w)
                 if w.shape != m.shape:
@@ -90,6 +94,10 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         res = least_squares(
             residuals, p0,
             method='lm',
+            max_nfev= int(self.max_iter.get()),
+            xtol = float(self.x_tol.get()),
+            ftol = float(self.f_tol.get()),
+            gtol = float(self.g_tol.get()),
             **kwargs
         )
 
