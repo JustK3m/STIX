@@ -109,5 +109,5 @@ jobs:
         with:
           name: macos-latest-artifact
           path: |
-            dist/STIX-Solar-Orbiter.dmg
+            code/dist/STIX-Solar-Orbiter.dmg
   
