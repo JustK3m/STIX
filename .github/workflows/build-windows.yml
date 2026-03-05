@@ -34,10 +34,7 @@ jobs:
           path: dist/*.exe
           
   build-unix:
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on:  ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,6 +63,44 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-binary
+          name: ubuntu-latest-binary
           path: dist/*
+          
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Create macos app
+        run: |
+            cd code
+            pyinstaller \
+            --windowed \
+            --name "STIX-Solar-Orbiter" \
+            --add-data "data:data" \
+            --paths=src \
+            --hidden-import matplotlib.backends.backend_tkagg \
+            src/main.py
+
+      - name: Create macOS DMG
+        run: |
+          mkdir dmg
+          cp -R dist/STIX-Solar-Orbiter.app dmg/
+          hdiutil create \
+            -volname "STIX Solar Orbiter" \
+            -srcfolder dmg \
+            -ov \
+            -format UDZO \
+            dist/STIX-Solar-Orbiter.dmg
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-latest-artifact
+          path: |
+            dist/STIX-Solar-Orbiter.dmg
+  
