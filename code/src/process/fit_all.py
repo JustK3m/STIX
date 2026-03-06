@@ -566,7 +566,7 @@ class Fitting:
             lkupStatistic = {"C-stat": LevMarCstatFitter(), "Chi2": LevMarLSQFitter()}
             self.fitter = lkupStatistic[name]
             self.menuStat.config(text=name)
-            #self.statname = name
+            self.statname = name
 
             # if name == "C-stat":
             #     statWindow = Toplevel(self.top2)
