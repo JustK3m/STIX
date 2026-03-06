@@ -208,10 +208,6 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
 
         lm_kwargs = dict(
             method=method,
-            max_nfev=int(self.max_iter.get()),
-            xtol=float(self.x_tol.get()),
-            ftol=float(self.f_tol.get()),
-            gtol=float(self.g_tol.get()),
         )
         if has_bounds:
             lm_kwargs["bounds"] = (lb, ub)

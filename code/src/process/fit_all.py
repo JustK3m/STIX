@@ -566,32 +566,32 @@ class Fitting:
             lkupStatistic = {"C-stat": LevMarCstatFitter(), "Chi2": LevMarLSQFitter()}
             self.fitter = lkupStatistic[name]
             self.menuStat.config(text=name)
-            self.statname = name
+            #self.statname = name
 
-            if name == "C-stat":
-                statWindow = Toplevel(self.top2)
-                statWindow.title(f"Cstat - Parameter Settings")
-                statWindow.geometry("380x350")
-                statWindow.configure(bg="#f7f9fc")
-
-                cstat_params = {"Cost tolerance": self.fitter.f_tol, "Parameters Tolerance": self.fitter.x_tol,
-                                "Gradient Tolerance": self.fitter.g_tol, "Max Iterations": self.fitter.max_iter, }
-                Label(
-                    statWindow,
-                    text=f"Set parameter values for C-stat",
-                    fg="#1e3a8a",
-                    bg="#f7f9fc",
-                    font=("Helvetica", 13, "bold")
-                ).pack(pady=15)
-
-                for name in cstat_params.keys():
-                    row = Frame(statWindow, bg="#f7f9fc")
-                    row.pack(pady=20, fill="x")
-                    Label(row, text=name, width=14, anchor="w", bg="#f7f9fc").pack(padx=10, side="left")
-                    Entry(row, bg="#f7f9fc", width=10, textvariable=cstat_params[name]).pack(padx=10, side="left")
-
-                Button(statWindow, text="Close", command=lambda: statWindow.destroy(), bg="#ef4444", fg="white",
-                       width=12).pack(pady=10, side="top")
+            # if name == "C-stat":
+            #     statWindow = Toplevel(self.top2)
+            #     statWindow.title(f"Cstat - Parameter Settings")
+            #     statWindow.geometry("380x350")
+            #     statWindow.configure(bg="#f7f9fc")
+            #
+            #     cstat_params = {"Cost tolerance": self.fitter.f_tol, "Parameters Tolerance": self.fitter.x_tol,
+            #                     "Gradient Tolerance": self.fitter.g_tol, "Max Iterations": self.fitter.max_iter, }
+            #     Label(
+            #         statWindow,
+            #         text=f"Set parameter values for C-stat",
+            #         fg="#1e3a8a",
+            #         bg="#f7f9fc",
+            #         font=("Helvetica", 13, "bold")
+            #     ).pack(pady=15)
+            #
+            #     for name in cstat_params.keys():
+            #         row = Frame(statWindow, bg="#f7f9fc")
+            #         row.pack(pady=20, fill="x")
+            #         Label(row, text=name, width=14, anchor="w", bg="#f7f9fc").pack(padx=10, side="left")
+            #         Entry(row, bg="#f7f9fc", width=10, textvariable=cstat_params[name]).pack(padx=10, side="left")
+            #
+            #     Button(statWindow, text="Close", command=lambda: statWindow.destroy(), bg="#ef4444", fg="white",
+            #            width=12).pack(pady=10, side="top")
 
         self.menuStat = tk.Menubutton(self.top2, text="Chi2", relief="raised")
         self.menuStat.place(relx=0.85, rely=0.35, relheight=0.05, relwidth=0.13)
