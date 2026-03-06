@@ -1450,6 +1450,20 @@ class BackgroundWindow:
 
         plot_instance = plotting.Plotting(data=data, headers=headers)
 
+        dt_start, dt_end = IntervalSelector(
+            self.times_datetime,  # axe X en datetime
+            self.data,
+            x_scale=self.times_datetime,
+            plot_label=self.plot_label,
+            col_label=self.data_label,
+            title=self.title,
+            xlabel=self.xlabel,
+            ylabel=self.ylabel,
+            color=self.color,
+            samefig=self.var_sep_times.get(),
+            band=i
+        ).graphical_selection()
+
         # ✅ Monkey-patch specgm_lim to avoid popup!
         def no_popup_specgm_lim():
             lower_clean = plot_instance.lower_bands[np.isfinite(plot_instance.lower_bands)]
