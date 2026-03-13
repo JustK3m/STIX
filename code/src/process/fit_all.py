@@ -11,7 +11,7 @@ from astropy.io import fits
 from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, differential_evolution
 from scipy.optimize import minimize
 
 from . import background
@@ -1756,7 +1756,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
@@ -1869,7 +1869,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
@@ -1966,7 +1966,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
@@ -2089,7 +2089,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
@@ -2145,7 +2145,7 @@ class Fitting:
                 model_key = "PowerLawCutoffFix"
 
                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
-                model_template = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix_fit, exposure)
+                model_template = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix_fit, exposure)
                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
@@ -2162,7 +2162,7 @@ class Fitting:
                 amplitude = fitted_model.amplitude.value
                 alpha = fitted_model.alpha.value
 
-                model_display = ForwardFolded.PowerLaw(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure)
                 try:
                     model_display.amplitude = fitted_model.amplitude
                     model_display.alpha = fitted_model.alpha
@@ -2200,7 +2200,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
@@ -2246,177 +2246,104 @@ class Fitting:
 
             elif self.lbox.curselection()[0] == 6:
 
-                # self.fit_model = 'PowerLawCutoffFree'
-                # model_key = "PowerLawCutoffFree"
+                 self.fit_model = 'PowerLawCutoffFree'
+                 model_key = "PowerLawCutoffFree"
 
-                messagebox.showwarning("Not yet available", "Please be patient.")
-                return
+                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
+                 model_template = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix_fit, exposure)
+                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
+                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
-                # # self.fit_model = 'PowerLawCutoffLog'
-                # # model_key = "PowerLawCutoffLog"
+                 fitted_model = self.fit_unconstrained_then_bounded(
+                     model_template,
+                     x_fit,
+                     counts_fit / exposure,  # y_fit
+                     counts_err_fit / exposure,  # y_err
+                     ["amplitude", "alpha"],
+                     bounds_map,
+                     initial_values
+                 )
 
-                # # Bornes pour les paramètres : [amplitude, alpha, E_cut]
-                # bounds = [
-                #     (1e-5, 1e2),   # amplitude
-                #     (0.5, 6.0),    # alpha
-                #     (1.0, 1e3)     # E_cut en keV
-                # ]
+                 amplitude = fitted_model.amplitude.value
+                 alpha = fitted_model.alpha.value
 
-                # # Données normalisées
-                # y_obs = counts_fit / exposure
-                # y_err = counts_err_fit / exposure
+                 model_display = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix, exposure)
+                 try:
+                     model_display.amplitude = fitted_model.amplitude
+                     model_display.alpha = fitted_model.alpha
+                 except Exception:
+                     model_display.amplitude.value = amplitude
+                     model_display.alpha.value = alpha
 
-                # # Fonction coût en log-log
-                # def cost(params):
-                #     amp, alpha, ecut = params
-                #     model_func = ForwardFolded.PowerLawCutoff(
-                #         e_low_true, e_high_true, matrix_fit, exposure
-                #     )
-                #     model_func.amplitude.value = amp
-                #     model_func.alpha.value = alpha
-                #     model_func.E_cut.value = ecut
-                #     y_model = model_func(x_fit)
+                 rate_modeled_full = model_display(x_fake)
 
-                #     # éviter valeurs nulles
-                #     mask = (y_obs > 0) & (y_model > 0)
-                #     if np.sum(mask) == 0:
-                #         return np.inf
+                 if unit == 'Rate':
+                     model_y = (rate_modeled_full / dE_det)
+                 elif unit == 'Counts':
+                     model_y = (rate_modeled_full * exposure)
+                 elif unit == 'Flux':
+                     model_y = (rate_modeled_full / (self.area * dE_det))
+                 else:
+                     raise ValueError("Unit most be choose")
 
-                #     resid_log = np.log10(y_obs[mask]) - np.log10(y_model[mask])
-                #     return np.sum(resid_log**2)
+                 # Apply cutoff in plotting range E >= E_cut_val (cutoff value) and E <= fit_Emax (fitting max value)
+                 fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[1:] <= fit_Emax)
+                 model_y = np.where(fit_mask_cutoff, model_y, 0)
 
-                # # Optimisation globale
-                # result = differential_evolution(cost, bounds, maxiter=500, polish=True)
+                 plt.step(edges_det[:-1], model_y, label='Fitted Model', color='blue')
 
-                # amplitude, alpha, E_cut_val = result.x
+                 if self.show_params_var.get():
+                     # show model parameters on the plot
+                     plt.text(0.05, 0.4,
+                              f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
+                              transform=plt.gca().transAxes,
+                              fontsize=10,
+                              verticalalignment='top',
+                              bbox=dict(facecolor='white', alpha=0.7))
 
-                # # --- Reconstruction du modèle final ---
-                # model_display = ForwardFolded.PowerLawCutoff(
-                #     e_low_true, e_high_true, matrix, exposure
-                # )
-                # model_display.amplitude.value = amplitude
-                # model_display.alpha.value = alpha
-                # model_display.E_cut.value = E_cut_val
+                 plt.xscale('log')
+                 plt.yscale('log')
+                 plt.xlabel("Channel Energy (keV)")
+                 plt.ylabel(y_label)
+                 plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
+                 if self.grid_var.get():
+                     plt.grid(True, which="both", ls="--", alpha=0.5)
+                 else:
+                     plt.grid(False)
+                 plt.legend()
+                 plt.tight_layout()
 
-                # rate_modeled_full = model_display(x_fake)
+                 if self.show_photon_var.get():
 
-                # if unit == 'Rate':
-                #     model_y = (rate_modeled_full / dE_det)
-                # elif unit == 'Counts':
-                #     model_y = (rate_modeled_full * exposure)
-                # elif unit == 'Flux':
-                #     model_y = (rate_modeled_full / (self.area * dE_det))
-                # else:
-                #     raise ValueError("Unit must be chosen")
+                     # --- Photon ---
+                     # Should be verify because it's not true
+                     model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E) ** (-alpha), 0.0)
+                     flux_photons = np.array([
+                         ForwardFolded.integrate_flux(e1, e2, model_func)
+                         for e1, e2 in zip(e_low_true, e_high_true)
+                     ])
 
-                # # Appliquer cutoff [E_cut, fit_Emax]
-                # fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[1:] <= fit_Emax)
-                # model_y = np.where(fit_mask_cutoff, model_y, 0)
-
-                # plt.step(edges_det[:-1], model_y, label='Fitted Model (log-log DE)', where='mid', color='cyan')
-
-                # if self.show_params_var.get():
-                #     plt.text(0.05, 0.4,
-                #         f"Power Law (log cost):\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
-                #         transform=plt.gca().transAxes,
-                #         fontsize=10,
-                #         verticalalignment='top',
-                #         bbox=dict(facecolor='white', alpha=0.7))
-
-                # plt.xscale('log')
-                # plt.yscale('log')
-                # plt.xlabel("Channel Energy (keV)")
-                # plt.ylabel(y_label)
-                # plt.title(f"Fitting with DE optimizer on log-residuals [{fit_Emin}, {fit_Emax}] keV")
-                # plt.grid(True, which="both", ls="--", alpha=0.5)
-                # plt.legend()
-                # plt.tight_layout()
-
-                # ----------------------------------------------------------------------------------
-
-                # Bornes pour les paramètres : [amplitude, alpha, E_cut]
-                bounds = [
-                    (1e-5, 1e2),  # amplitude
-                    (0.5, 6.0),  # alpha
-                    (1.0, 1e3)  # E_cut en keV
-                ]
-
-                # Point initial raisonnable
-                x0 = [1e-2, 2.0, 100.0]
-
-                # Données normalisées
-                y_obs = counts_fit / exposure
-                y_err = counts_err_fit / exposure
-
-                # Fonction coût linéaire (moindres carrés pondérés)
-                def cost(params):
-                    amp, alpha, ecut = params
-                    model_func = ForwardFolded.PowerLawCutoff(
-                        e_low_true, e_high_true, matrix_fit, exposure
-                    )
-                    model_func.amplitude.value = amp
-                    model_func.alpha.value = alpha
-                    model_func.E_cut.value = ecut
-                    y_model = model_func(x_fit)
-
-                    # éviter divisions par zéro
-                    mask = (y_err > 0)
-                    if np.sum(mask) == 0:
-                        return np.inf
-
-                    resid = (y_obs[mask] - y_model[mask]) / y_err[mask]
-                    return np.sum(resid ** 2)
-
-                # Optimisation locale (L-BFGS-B)
-                result = minimize(cost, x0, method='L-BFGS-B', bounds=bounds)
-
-                # Résultats optimisés
-                amplitude, alpha, E_cut_val = result.x
-
-                # --- Reconstruction du modèle complet ---
-                model_display = ForwardFolded.PowerLawCutoff(
-                    e_low_true, e_high_true, matrix, exposure
-                )
-                model_display.amplitude.value = amplitude
-                model_display.alpha.value = alpha
-                model_display.E_cut.value = E_cut_val
-
-                rate_modeled_full = model_display(x_fake)
-
-                # Conversion selon l'unité
-                if unit == 'Rate':
-                    model_y = (rate_modeled_full / dE_det)
-                elif unit == 'Counts':
-                    model_y = (rate_modeled_full * exposure)
-                elif unit == 'Flux':
-                    model_y = (rate_modeled_full / (self.area * dE_det))
-                else:
-                    raise ValueError("Unit must be chosen")
-
-                # Appliquer le cutoff dans [E_cut, fit_Emax]
-                fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[1:] <= fit_Emax)
-                model_y = np.where(fit_mask_cutoff, model_y, 0)
-
-                # Affichage
-                plt.step(edges_det[:-1], model_y, label='Fitted Model (linear least squares)', where='mid',
-                         color='green')
-
-                if self.show_params_var.get():
-                    plt.text(0.05, 0.4,
-                             f"Power Law (linear cost):\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
-                             transform=plt.gca().transAxes,
-                             fontsize=10,
-                             verticalalignment='top',
-                             bbox=dict(facecolor='white', alpha=0.7))
-
-                plt.xscale('log')  # L'affichage reste log-log
-                plt.yscale('log')
-                plt.xlabel("Channel Energy (keV)")
-                plt.ylabel(y_label)
-                plt.title(f"Fitting with L-BFGS-B optimizer on linear residuals [{fit_Emin}, {fit_Emax}] keV")
-                plt.grid(True, which="both", ls="--", alpha=0.5)
-                plt.legend()
-                plt.tight_layout()
+                     plt.figure()
+                     plt.step(Edges_photon[:-1], flux_photons, where='mid',
+                              label='Photon model', color='green')
+                     xscale = getattr(self, "photon_xscale", "log")
+                     yscale = getattr(self, "photon_yscale", "log")
+                     plt.xscale(xscale)
+                     plt.yscale(yscale)
+                     plt.xlabel("Energy (keV)")
+                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
+                     plt.title("Photon Flux Model")
+                     if self.grid_var.get():
+                         plt.grid(True, which="both", ls="--", alpha=0.5)
+                     plt.legend()
+                     if self.show_params_var.get():
+                         plt.text(0.05, 0.4,
+                                  f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
+                                  transform=plt.gca().transAxes,
+                                  fontsize=10,
+                                  verticalalignment='top',
+                                  bbox=dict(facecolor='white', alpha=0.7))
+                     plt.tight_layout()
 
 
             elif self.lbox.curselection()[0] == 7:
@@ -2495,7 +2422,7 @@ class Fitting:
                 plt.yscale('log')
                 plt.xlabel("Channel Energy (keV)")
                 plt.ylabel(y_label)
-                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV")
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
                 if self.grid_var.get():
                     plt.grid(True, which="both", ls="--", alpha=0.5)
                 else:
