@@ -5,6 +5,7 @@ from astropy.modeling import FittableModel, Parameter
 class ForwardFolded:
 
     # function to calculate the flux
+    @staticmethod
     def integrate_flux(e1, e2, model_func, n_points=10):
         """
         Intègre model_func sur [e1, e2] par trapèzes et retourne le flux moyen.
@@ -217,25 +218,35 @@ class ForwardFolded:
         n_outputs = 1
 
         amplitude = Parameter(default=1e-2)
-        alpha = Parameter(default=2.0, min=0.1, max=5.0)
+        alpha = Parameter(default=2.0, min=1e-5)
 
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_cut=10.0, **kwargs):
+        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_cut=10.0, E_pivot=100.0, **kwargs):
             super().__init__(**kwargs)
             self.e_low_true = e_low_true
             self.e_high_true = e_high_true
             self.matrix = matrix
-            self.exposure = exposure
             self.E_cut = E_cut
+            self.exposure = exposure
+            self.E_pivot = E_pivot
 
         def evaluate(self, x, amplitude, alpha):
-            model_func = lambda E: np.where(E >= self.E_cut, amplitude * (E) ** (-alpha), 0.0)
+            model_func = lambda E: np.where(E >= self.E_cut, amplitude * (E/self.E_pivot) ** (-alpha), 0.0)
 
-            true_fluxes = np.array([
-                ForwardFolded.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
+            true_fluxes = np.zeros(len(self.e_low_true))
+
+            for i, (e1, e2) in enumerate(zip(self.e_low_true, self.e_high_true)):
+                # Bin entièrement sous le cutoff → flux nul, pas besoin d'intégrer
+                if e2 <= self.E_cut:
+                    true_fluxes[i] = 0.0
+                # Bin entièrement au-dessus du cutoff → intégration normale
+                elif e1 >= self.E_cut:
+                    true_fluxes[i] = ForwardFolded.integrate_flux(e1, e2, model_func)
+                # Bin qui chevauche E_cut → intégrer seulement la partie au-dessus
+                else:
+                    true_fluxes[i] = ForwardFolded.integrate_flux(self.E_cut, e2, model_func)
 
             folded = np.dot(true_fluxes, self.matrix) / self.exposure
+
             return folded
 
     # === Power Law Cutoff Free ===
@@ -259,46 +270,39 @@ class ForwardFolded:
         n_inputs = 1
         n_outputs = 1
 
-        # FIX 1 : bounds définis via min/max, pas bounds=(...),
-        # pour être correctement lus par les fitters scipy.
-        # FIX 2 : amplitude et alpha bornés inférieurement pour
-        # éviter flux négatifs et indices non physiques.
         amplitude = Parameter(default=1e-2)  # flux > 0 obligatoire
-        alpha = Parameter(default=2.0, min=0.1, max=5.0)  # indice physique
-        E_cut = Parameter(default=10.0)  # cutoff fitté
+        alpha = Parameter(default=2.0, min=1e-5)  # indice physique
+        E_cut = Parameter(default=10.0, min=4, max=120)  # cutoff fitté
 
-        def __init__(self, e_low_true, e_high_true, matrix, exposure, **kwargs):
+        def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
             super().__init__(**kwargs)
             self.e_low_true = np.asarray(e_low_true, dtype=float)
             self.e_high_true = np.asarray(e_high_true, dtype=float)
             self.matrix = np.asarray(matrix, dtype=float)
-            # FIX 3 : exposure ne peut pas être nul (division par zéro)
-            if np.isscalar(exposure):
-                if exposure <= 0:
-                    raise ValueError("exposure doit être > 0")
-            self.exposure = float(exposure)
+            self.exposure = exposure
+            self.E_pivot = E_pivot
 
         def evaluate(self, x, amplitude, alpha, E_cut):
 
-            # On force la conversion en scalaire Python pour np.where.
-            E_cut_val = float(np.squeeze(E_cut))
-
-            def model_func(E):
-                E = np.asarray(E, dtype=float)
-                E_safe = np.maximum(E, 1e-12)  # évite E=0 dans le power law
-                flux = amplitude * E_safe ** (-alpha)
-                return np.where(E >= E_cut_val, flux, 0.0)
+            model_func = lambda E : np.where(E >= E_cut, amplitude * (E/100.0) ** (-alpha), 0.0)
 
             # Intégration sur les bins d'énergie vraie
-            true_fluxes = np.array([
-                ForwardFolded.integrate_flux(e1, e2, model_func)
-                for e1, e2 in zip(self.e_low_true, self.e_high_true)
-            ])
+            true_fluxes = np.zeros(len(self.e_low_true))
+
+            for i, (e1, e2) in enumerate(zip(self.e_low_true, self.e_high_true)):
+                # Bin entièrement sous le cutoff → flux nul, pas besoin d'intégrer
+                if e2 <= self.E_cut:
+                    true_fluxes[i] = 0.0
+                # Bin entièrement au-dessus du cutoff → intégration normale
+                elif e1 >= self.E_cut:
+                    true_fluxes[i] = ForwardFolded.integrate_flux(e1, e2, model_func)
+                # Bin qui chevauche E_cut → intégrer seulement la partie au-dessus
+                else:
+                    true_fluxes[i] = ForwardFolded.integrate_flux(self.E_cut, e2, model_func)
 
             folded = np.dot(true_fluxes, self.matrix) / self.exposure
 
-            folded = np.nan_to_num(folded, nan=1e-30, posinf=0.0, neginf=0.0)
-            return np.clip(folded, 1e-30, None)
+            return folded
 
     # === VTH + Power Law Cutoff Fix ===
     class VTHPlusPowerLawCutoffFix(FittableModel):

@@ -11,8 +11,7 @@ from astropy.io import fits
 from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
-from scipy.optimize import least_squares, differential_evolution
-from scipy.optimize import minimize
+from scipy.optimize import least_squares, minimize_scalar
 
 from . import background
 from .fitting.fitters import LevMarCstatFitter
@@ -75,13 +74,10 @@ class Fitting:
         "PowerLawCutoffFix": {
             "amplitude": (1e-12, 1e6),
             "alpha": (0.1, 50.0),
-            # "amplitude": (None, None),
-            # "alpha": (None, None),
         },
         "PowerLawCutoffFree": {
             "amplitude": (None, None),
             "alpha": (None, None),
-            "E_cut": (1.0, 1e3)
         },
         "V_TH + PowerLawCutoffFix": {
             "EM": (1e44, 1e52),
@@ -124,12 +120,13 @@ class Fitting:
         "PowerLawCutoffFix": {
             "amplitude": 1e-2,
             "alpha": 2.0,
-            "E_cut": 10.0  # fixe mais modifiable
+            "E_cut": 10.0,  # fixe mais modifiable
+            "E_pivot": 100.0
         },
         "PowerLawCutoffFree": {
             "amplitude": 1e-2,
             "alpha": 2.0,
-            "E_cut": 10.0  # fitté
+            "E_pivot": 100.0  # fitté
         },
         "V_TH + PowerLawCutoffFix": {
             "EM": 1e48,
@@ -1672,7 +1669,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
@@ -1782,7 +1779,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
@@ -1894,7 +1891,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
@@ -1998,7 +1995,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
@@ -2118,7 +2115,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
@@ -2145,7 +2142,8 @@ class Fitting:
                 model_key = "PowerLawCutoffFix"
 
                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
-                model_template = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix_fit, exposure)
+                E_pivot_val = self.user_param_values.get(model_key, {}).get("E_pivot", 100.0)
+                model_template = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix_fit, exposure, E_cut_val, E_pivot_val)
                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
@@ -2162,7 +2160,7 @@ class Fitting:
                 amplitude = fitted_model.amplitude.value
                 alpha = fitted_model.alpha.value
 
-                model_display = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure)
+                model_display = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure, E_cut_val, E_pivot_val)
                 try:
                     model_display.amplitude = fitted_model.amplitude
                     model_display.alpha = fitted_model.alpha
@@ -2190,7 +2188,8 @@ class Fitting:
                 if self.show_params_var.get():
                     # show model parameters on the plot
                     plt.text(0.05, 0.4,
-                             f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
+                             f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_pivot = {E_pivot_val:.2f} keV \n E_cut = {E_cut_val:.2f}"
+                             ,
                              transform=plt.gca().transAxes,
                              fontsize=10,
                              verticalalignment='top',
@@ -2212,7 +2211,7 @@ class Fitting:
 
                     # --- Photon ---
                     # Should be verify because it's not true
-                    model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E) ** (-alpha), 0.0)
+                    model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E / E_pivot_val) ** (-alpha), 0.0)
                     flux_photons = np.array([
                         ForwardFolded.integrate_flux(e1, e2, model_func)
                         for e1, e2 in zip(e_low_true, e_high_true)
@@ -2227,13 +2226,13 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()
                     if self.show_params_var.get():
                         plt.text(0.05, 0.4,
-                                 f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
+                                 f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_pivot = {E_pivot_val:.2f} keV \n E_cut = {E_cut_val:.2f}",
                                  transform=plt.gca().transAxes,
                                  fontsize=10,
                                  verticalalignment='top',
@@ -2246,104 +2245,109 @@ class Fitting:
 
             elif self.lbox.curselection()[0] == 6:
 
-                 self.fit_model = 'PowerLawCutoffFree'
-                 model_key = "PowerLawCutoffFree"
+                self.fit_model = 'PowerLawCutoffFree'
+                model_key = "PowerLawCutoffFree"
 
-                 E_cut_val = self.user_param_values.get(model_key, {}).get("E_cut", 10.0)
-                 model_template = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix_fit, exposure)
-                 initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
-                 bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
+                y_fit = counts_fit / exposure
+                y_err = counts_err_fit / exposure
 
-                 fitted_model = self.fit_unconstrained_then_bounded(
-                     model_template,
-                     x_fit,
-                     counts_fit / exposure,  # y_fit
-                     counts_err_fit / exposure,  # y_err
-                     ["amplitude", "alpha"],
-                     bounds_map,
-                     initial_values
-                 )
+                E_pivot_val = self.user_param_values.get(model_key, {}).get("E_pivot", 100.0)
+                model_template = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix_fit, exposure, E_pivot_val)
+                initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
+                bounds_map = self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {}))
 
-                 amplitude = fitted_model.amplitude.value
-                 alpha = fitted_model.alpha.value
+                fitted_model = self.fit_unconstrained_then_bounded(
+                    model_template,
+                    x_fit,
+                    y_fit,
+                    y_err,
+                    ["amplitude", "alpha"],
+                    bounds_map,
+                    initial_values
+                )
 
-                 model_display = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix, exposure)
-                 try:
-                     model_display.amplitude = fitted_model.amplitude
-                     model_display.alpha = fitted_model.alpha
-                 except Exception:
-                     model_display.amplitude.value = amplitude
-                     model_display.alpha.value = alpha
 
-                 rate_modeled_full = model_display(x_fake)
+                amplitude = fitted_model.amplitude.value
+                alpha = fitted_model.alpha.value
+                E_cut_val = fitted_model.E_cut.value
 
-                 if unit == 'Rate':
-                     model_y = (rate_modeled_full / dE_det)
-                 elif unit == 'Counts':
-                     model_y = (rate_modeled_full * exposure)
-                 elif unit == 'Flux':
-                     model_y = (rate_modeled_full / (self.area * dE_det))
-                 else:
-                     raise ValueError("Unit most be choose")
+                model_display = ForwardFolded.PowerLawCutoffFree(e_low_true, e_high_true, matrix, exposure, E_pivot_val)
+                try:
+                    model_display.amplitude = fitted_model.amplitude
+                    model_display.alpha = fitted_model.alpha
+                except Exception:
+                    model_display.amplitude.value = amplitude
+                    model_display.alpha.value = alpha
 
-                 # Apply cutoff in plotting range E >= E_cut_val (cutoff value) and E <= fit_Emax (fitting max value)
-                 fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[1:] <= fit_Emax)
-                 model_y = np.where(fit_mask_cutoff, model_y, 0)
+                rate_modeled_full = model_display(x_fake)
 
-                 plt.step(edges_det[:-1], model_y, label='Fitted Model', color='blue')
+                if unit == 'Rate':
+                    model_y = (rate_modeled_full / dE_det)
+                elif unit == 'Counts':
+                    model_y = (rate_modeled_full * exposure)
+                elif unit == 'Flux':
+                    model_y = (rate_modeled_full / (self.area * dE_det))
+                else:
+                    raise ValueError("Unit most be choose")
 
-                 if self.show_params_var.get():
-                     # show model parameters on the plot
-                     plt.text(0.05, 0.4,
-                              f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
-                              transform=plt.gca().transAxes,
-                              fontsize=10,
-                              verticalalignment='top',
-                              bbox=dict(facecolor='white', alpha=0.7))
+                # Apply cutoff in plotting range E >= E_cut_val (cutoff value) and E <= fit_Emax (fitting max value)
+                fit_mask_cutoff = (edges_det[1:] > E_cut_val) & (edges_det[:-1] < fit_Emax)
+                model_y = np.where(fit_mask_cutoff, model_y, 0)
 
-                 plt.xscale('log')
-                 plt.yscale('log')
-                 plt.xlabel("Channel Energy (keV)")
-                 plt.ylabel(y_label)
-                 plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
-                 if self.grid_var.get():
-                     plt.grid(True, which="both", ls="--", alpha=0.5)
-                 else:
-                     plt.grid(False)
-                 plt.legend()
-                 plt.tight_layout()
+                plt.step(edges_det[:-1], model_y, label='Fitted Model', color='blue')
 
-                 if self.show_photon_var.get():
+                if self.show_params_var.get():
+                    # show model parameters on the plot
+                    plt.text(0.05, 0.4,
+                             f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_pivot = {E_pivot_val:.2f} keV \n E_cut = {E_cut_val:.2f}",
+                             transform=plt.gca().transAxes,
+                             fontsize=10,
+                             verticalalignment='top',
+                             bbox=dict(facecolor='white', alpha=0.7))
 
-                     # --- Photon ---
-                     # Should be verify because it's not true
-                     model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E) ** (-alpha), 0.0)
-                     flux_photons = np.array([
-                         ForwardFolded.integrate_flux(e1, e2, model_func)
-                         for e1, e2 in zip(e_low_true, e_high_true)
-                     ])
+                plt.xscale('log')
+                plt.yscale('log')
+                plt.xlabel("Channel Energy (keV)")
+                plt.ylabel(y_label)
+                plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
+                if self.grid_var.get():
+                    plt.grid(True, which="both", ls="--", alpha=0.5)
+                else:
+                    plt.grid(False)
+                plt.legend()
+                plt.tight_layout()
 
-                     plt.figure()
-                     plt.step(Edges_photon[:-1], flux_photons, where='mid',
-                              label='Photon model', color='green')
-                     xscale = getattr(self, "photon_xscale", "log")
-                     yscale = getattr(self, "photon_yscale", "log")
-                     plt.xscale(xscale)
-                     plt.yscale(yscale)
-                     plt.xlabel("Energy (keV)")
-                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                     plt.title("Photon Flux Model")
-                     if self.grid_var.get():
-                         plt.grid(True, which="both", ls="--", alpha=0.5)
-                     plt.legend()
-                     if self.show_params_var.get():
-                         plt.text(0.05, 0.4,
-                                  f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_cut = {E_cut_val:.2f}",
-                                  transform=plt.gca().transAxes,
-                                  fontsize=10,
-                                  verticalalignment='top',
-                                  bbox=dict(facecolor='white', alpha=0.7))
-                     plt.tight_layout()
+                if self.show_photon_var.get():
+
+                    # --- Photon ---
+                    # Should be verify because it's not true
+                    model_func = lambda E: np.where(E >= E_cut_val, amplitude * (E / E_pivot_val) ** (-alpha), 0.0)
+                    flux_photons = np.array([
+                        ForwardFolded.integrate_flux(e1, e2, model_func)
+                        for e1, e2 in zip(e_low_true, e_high_true)
+                    ])
+
+                    plt.figure()
+                    plt.step(Edges_photon[:-1], flux_photons, where='mid',
+                             label='Photon model', color='green')
+                    xscale = getattr(self, "photon_xscale", "log")
+                    yscale = getattr(self, "photon_yscale", "log")
+                    plt.xscale(xscale)
+                    plt.yscale(yscale)
+                    plt.xlabel("Energy (keV)")
+                    plt.ylabel("Photon flux [photons / (s cm² keV)]")
+                    plt.title(f"Photon Flux Model using {self.statname}")
+                    if self.grid_var.get():
+                        plt.grid(True, which="both", ls="--", alpha=0.5)
+                    plt.legend()
+                    if self.show_params_var.get():
+                        plt.text(0.05, 0.4,
+                                 f"Power Law:\n amplitude = {amplitude:.2e}\n alpha = {alpha:.2f} \n E_pivot = {E_pivot_val:.2f} keV \n E_cut = {E_cut_val:.2f}",
+                                 transform=plt.gca().transAxes,
+                                 fontsize=10,
+                                 verticalalignment='top',
+                                 bbox=dict(facecolor='white', alpha=0.7))
+                    plt.tight_layout()
 
 
             elif self.lbox.curselection()[0] == 7:
@@ -2452,7 +2456,7 @@ class Fitting:
                     plt.yscale(yscale)
                     plt.xlabel("Energy (keV)")
                     plt.ylabel("Photon flux [photons / (s cm² keV)]")
-                    plt.title("Photon Flux Model")
+                    plt.title(f"Photon Flux Model using {self.statname}")
                     if self.grid_var.get():
                         plt.grid(True, which="both", ls="--", alpha=0.5)
                     plt.legend()

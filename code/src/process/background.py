@@ -1450,19 +1450,6 @@ class BackgroundWindow:
 
         plot_instance = plotting.Plotting(data=data, headers=headers)
 
-        dt_start, dt_end = IntervalSelector(
-            self.times_datetime,  # axe X en datetime
-            self.data,
-            x_scale=self.times_datetime,
-            plot_label=self.plot_label,
-            col_label=self.data_label,
-            title=self.title,
-            xlabel=self.xlabel,
-            ylabel=self.ylabel,
-            color=self.color,
-            samefig=self.var_sep_times.get(),
-            band=i
-        ).graphical_selection()
 
         # ✅ Monkey-patch specgm_lim to avoid popup!
         def no_popup_specgm_lim():
@@ -1496,15 +1483,45 @@ class BackgroundWindow:
             dt_end = dt_end.replace(tzinfo=None) 
             print(f"Selected region (datetime): {dt_start} - {dt_end}")
 
-            # Write into your Entry widgets
+            BackgroundWindow.DATA_BKG_SELECTED = True
+
+            start_dt = BackgroundWindow.parse_datetime_string(self.start_date)
+            end_dt = BackgroundWindow.parse_datetime_string(self.end_date)
+            t_min = min(self.times)
+            t_max = max(self.times)
+            total_seconds = (end_dt - start_dt).total_seconds()
+
+            # Fraction temporelle des sélections
+            fraction_start = (dt_start - start_dt).total_seconds() / total_seconds
+            fraction_end = (dt_end - start_dt).total_seconds() / total_seconds
+
+            # Mapping proportionnel vers l'axe self.times
+            rel_start = t_min + fraction_start * (t_max - t_min)
+            rel_end = t_min + fraction_end * (t_max - t_min)
+
+            # Clamp les valeurs dans les bornes
+            rel_start = max(rel_start, min(self.times))
+            rel_end = min(rel_end, max(self.times))
+
+            if rel_start > rel_end:
+                rel_start, rel_end = rel_end, rel_start
+
+            self.bkg_start_time[i] = rel_start
+            self.bkg_end_time[i] = rel_end
+
+            # Mettre à jour les champs affichés
             self.time_min[i].delete(0, 'end')
             self.time_max[i].delete(0, 'end')
-            self.time_min[i].insert(0, dt_start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3])
-            self.time_max[i].insert(0, dt_end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3])
+            self.time_min[i].insert(0, self.convert_time_to_date(rel_start))
+            self.time_max[i].insert(0, self.convert_time_to_date(rel_end))
 
-            # Send Start and End data to the fit_all
-            BackgroundWindow.DATA_BKG_START = dt_start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
-            BackgroundWindow.DATA_BKG_END = dt_end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+            # Send rel_start and rel_end to the fit_all
+            BackgroundWindow.DATA_BKG_START = self.date_to_times_index(self.convert_time_to_date(rel_start))
+            BackgroundWindow.DATA_BKG_END = self.date_to_times_index(self.convert_time_to_date(rel_end))
+
+            # Index dans self.times
+            self.bkg_start_index[i] = self.round_value(self.times, rel_start)
+            self.bkg_end_index[i] = self.round_value(self.times, rel_end)
 
             # ✅ Close the plot window
             plt.close()
@@ -1514,7 +1531,7 @@ class BackgroundWindow:
         ax = plt.gca()
         span = SpanSelector(ax, onselect, 'horizontal', useblit=True,
                             props=dict(alpha=0.5, facecolor='red'))
-        
+
 
         plt.show()
 
