@@ -91,7 +91,7 @@ Label(root,
 
 Label(root,
       text="\n \n \n Use the buttons under File to: "
-           "\n \n 1. Select Plotting Data Files"
+           "\n \n 1. Select Input Data Files"
            "\n 2. Define Background and Analysis Intervals, \n and Select Fit Function Components"
            "\n 3. Fit data "
            "\n 4. View Fit Results "
