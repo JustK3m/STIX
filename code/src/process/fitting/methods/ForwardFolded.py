@@ -3,7 +3,7 @@ from astropy.modeling import FittableModel, Parameter
 
 
 # function to calculate the flux
-def integrate_flux(e1, e2, model_func, n_points=20):
+def integrate_flux(e1, e2, model_func, n_points=10):
     """
     Intègre model_func sur [e1, e2] par trapèzes et retourne le flux moyen.
     """
@@ -268,7 +268,6 @@ class PowerLawCutoffFree(FittableModel):
 
     amplitude = Parameter(default=1e-2)  # flux > 0 obligatoire
     alpha = Parameter(default=2.0, min=1e-5)  # indice physique
-    E_cut = Parameter(default=10, min=4, max=120)  # cutoff fitté
 
     def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
         super().__init__(**kwargs)
@@ -277,10 +276,10 @@ class PowerLawCutoffFree(FittableModel):
         self.matrix = np.asarray(matrix, dtype=float)
         self.exposure = exposure
         self.E_pivot = E_pivot
+        self.E_cut = 10
 
-    def evaluate(self, x, amplitude, alpha, E_cut):
-        print(E_cut)
-        model_func = lambda E: np.where(E >= E_cut, amplitude * (E / self.E_pivot) ** (-alpha), 0.0)
+    def evaluate(self, x, amplitude, alpha):
+        model_func = lambda E: np.where(E >= self.E_cut, amplitude * (E / self.E_pivot) ** (-alpha), 0.0)
 
         true_fluxes = np.array([
             integrate_flux(e1, e2, model_func)

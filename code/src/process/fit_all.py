@@ -6,12 +6,11 @@ from tkinter import *
 from tkinter import messagebox
 from tkinter.filedialog import askopenfilename
 
-import numpy as np
 from astropy.io import fits
 from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
-from scipy.optimize import least_squares
+from scipy.optimize import minimize_scalar
 
 from . import background
 from .fitting.fitters import LevMarCstatFitter
@@ -55,7 +54,7 @@ class Fitting:
         "V_TH + PowerLawCutoffFix": {"EM": (1e44, 1e52), "T": (0.1, 50.0),
                                      "amplitude": (1e-2, 1e2), "alpha": (2, 10.0)},
         "V_TH + PowerLawCutoffFree": {"EM": (1e44, 1e52), "T": (0.1, 50.0),
-                                     "amplitude": (1e-2, 1e2), "alpha": (2, 10.0)},
+                                      "amplitude": (1e-2, 1e2), "alpha": (2, 10.0)},
     }
 
     # ── Valeurs initiales par défaut ───────────────────────────
@@ -70,11 +69,12 @@ class Fitting:
                             "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
         "PowerLawCutoffFix": {"amplitude": 1e-2, "alpha": 2.0,
                               "E_cut": 10.0, "E_pivot": 100.0},
-        "PowerLawCutoffFree": {"amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
+        "PowerLawCutoffFree": {"amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
+                               "Ec_min": 4, "Ec_max":20},
         "V_TH + PowerLawCutoffFix": {"EM": 1e48, "T": 1.0,
                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0, "E_cut": 10},
         "V_TH + PowerLawCutoffFree": {"EM": 1e48, "T": 1.0,
-                                     "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
+                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
     }
 
     # create a new window called 'SPEX Fit Options'
@@ -189,7 +189,7 @@ class Fitting:
             saved_bounds = self.user_param_bounds.get(model_key, {})
 
             # Paramètres sans min/max (valeur seule)
-            VALUE_ONLY_PARAMS = {"E_pivot", "E_cut"}
+            VALUE_ONLY_PARAMS = {"E_pivot", "E_cut", "Ec_min", "Ec_max"}
             VALUE_ONLY_MODELS = {
                 "PowerLaw1D", "V_TH + PowerLaw", "PowerLawCutoffFix",
                 "PowerLawCutoffFree", "V_TH + PowerLawCutoffFix", "V_TH + PowerLawCutoffFree",
@@ -519,12 +519,12 @@ class Fitting:
                                                   'Epivot – energie pivot (kEv)'],
 
                      'V_TH + PowerLawCutoffFree': ['Mix of V_TH and Power Law with free cutoff',
-                                                  'T - Temperature (keV)',
-                                                  'EM - Emission Measure (cm^-3)',
-                                                  'Amplitude - Model amplitude at the reference energy',
-                                                  'Ec – Cutoff energy',
-                                                  'Alpha - Power law index',
-                                                  'Epivot – energie pivot (kEv)']
+                                                   'T - Temperature (keV)',
+                                                   'EM - Emission Measure (cm^-3)',
+                                                   'Amplitude - Model amplitude at the reference energy',
+                                                   'Ec – Cutoff energy',
+                                                   'Alpha - Power law index',
+                                                   'Epivot – energie pivot (kEv)']
 
                      }
 
@@ -1073,6 +1073,9 @@ class Fitting:
         matrix_fit = matrix[:, fit_mask]
         x_fake = np.zeros_like(counts)
 
+        y_fit = counts_fit / exposure
+        y_err = counts_err_fit / exposure
+
         # ── Unités ────────────────────────────────────────────────
         rate = counts / exposure
         rate_err = counts_err / exposure
@@ -1152,7 +1155,7 @@ class Fitting:
             model_template = PowerLaw(
                 e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
             fitted = self.fit_unconstrained_then_bounded(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["amplitude", "alpha"], bounds_map, initial_values)
 
             amplitude, alpha = fitted.amplitude.value, fitted.alpha.value
@@ -1184,7 +1187,7 @@ class Fitting:
             model_template = BrokenPowerLaw(
                 e_low_true, e_high_true, matrix_fit, exposure)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["amplitude", "E_break", "alpha_1", "alpha_2"], model_key,
                 initial_values=initial_values)
 
@@ -1224,7 +1227,7 @@ class Fitting:
             model_template = ExpPowerLaw(
                 e_low_true, e_high_true, matrix_fit, exposure)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["p0", "p1", "p2", "e3", "e4"], model_key,
                 initial_values=initial_values)
 
@@ -1259,7 +1262,7 @@ class Fitting:
             model_template = VTH(
                 e_low_true, e_high_true, matrix_fit, exposure)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["EM", "T"], model_key, initial_values=initial_values)
 
             T, EM = fitted.T.value, fitted.EM.value
@@ -1291,7 +1294,7 @@ class Fitting:
             model_template = VTHPlusPowerLaw(
                 e_low_true, e_high_true, matrix_fit, exposure, E_pivot=E_pivot_val)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["EM", "T", "amplitude", "alpha"], model_key,
                 initial_values=initial_values)
 
@@ -1330,10 +1333,37 @@ class Fitting:
             model_template = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix_fit, exposure, E_cut_val, E_pivot_val)
             fitted = self.fit_unconstrained_then_bounded(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["amplitude", "alpha"], bounds_map, initial_values)
 
             amplitude, alpha = fitted.amplitude.value, fitted.alpha.value
+
+            # E_cut_grid = np.linspace(5, 20, 15)
+            # chi2_values = []
+            #
+            # for ec in E_cut_grid:
+            #     model_ec = ForwardFolded.PowerLawCutoffFix(
+            #         e_low_true, e_high_true, matrix_fit, exposure, ec, E_pivot_val)
+            #     fitted_ec = self.fit_unconstrained_then_bounded(
+            #         model_ec, x_fit, y_fit, y_err,
+            #         ["amplitude", "alpha"], bounds_map, initial_values)
+            #     chi2 = np.sum(((y_fit - fitted_ec(x_fit)) / (y_err + 1e-30)) ** 2)
+            #     chi2_values.append(chi2)
+            #
+            # chi2_values = np.array(chi2_values)
+            #
+            # plt.figure()
+            # plt.plot(E_cut_grid, chi2_values, 'o-', color='steelblue', label='χ²(E_cut)')
+            # plt.axvline(E_cut_val, color='red', linestyle='--',
+            #             label=f'E_cut utilisé = {E_cut_val:.2f} keV')
+            # plt.axhline(chi2_values.min(), color='orange', linestyle='--',
+            #             label=f'χ² min = {chi2_values.min():.3f}')
+            # plt.xlabel("E_cut (keV)")
+            # plt.ylabel("χ²")
+            # plt.title("χ²(E_cut) — PowerLaw Cutoff Fix")
+            # plt.legend()
+            # plt.grid(True, which="both", ls="--", alpha=0.5)
+            # plt.tight_layout()
 
             model_display = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix, exposure, E_cut_val, E_pivot_val)
@@ -1348,7 +1378,7 @@ class Fitting:
 
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
-            param_text = (f"Power Law Cutoff Fix:\n amplitude={amplitude:.2e}\n"
+            param_text = (f"Power Law Cutoff Free:\n amplitude={amplitude:.2e}\n"
                           f" alpha={alpha:.2f}\n E_pivot={E_pivot_val:.2f} keV\n"
                           f" E_cut={E_cut_val:.2f} keV")
             if self.show_params_var.get():
@@ -1358,6 +1388,7 @@ class Fitting:
                     E >= E_cut_val,
                     amplitude * (E / E_pivot_val) ** (-alpha), 0.0), param_text)
 
+
         # ══════════════════════════════════════════════════════════
         #  6 — Power Law Cutoff Free
         # ══════════════════════════════════════════════════════════
@@ -1366,25 +1397,44 @@ class Fitting:
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
+            E_cut_bound = (initial_values.get("Ec_min", fit_Emin), initial_values.get("Ec_max", fit_Emax))
             E_pivot_val = initial_values.get("E_pivot", 100.0)
 
-            y_fit = counts_fit / exposure
-            y_err = counts_err_fit / exposure
-
-            model_template = PowerLawCutoffFree(
+            model_template = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix_fit, exposure, E_pivot_val)
+
+            def chi2_for_Ecut(E_cut_val):
+                print(E_cut_val)
+                model_template.E_cut = E_cut_val
+                fitted_model = self.fit_unconstrained_then_bounded(
+                    model_template, x_fit, y_fit, y_err,
+                    ["amplitude", "alpha"], bounds_map, initial_values
+                )
+                return np.sum(((y_fit - fitted_model(x_fit)) / (y_err + 1e-30)) ** 2)
+
+            result = minimize_scalar(
+                chi2_for_Ecut,
+                bounds=E_cut_bound,
+                method="bounded",
+                options={"xatol":1e-3}
+            )
+
+            E_cut_val = result.x
+
+            # Récupérer le modèle final au E_cut optimal
+            model_template.E_cut = E_cut_val
             fitted = self.fit_unconstrained_then_bounded(
                 model_template, x_fit, y_fit, y_err,
-                ["amplitude", "alpha"], bounds_map, initial_values)
+                ["amplitude", "alpha"], bounds_map, initial_values
+            )
 
             amplitude = fitted.amplitude.value
             alpha = fitted.alpha.value
-            E_cut_val = fitted.E_cut.value
 
-            model_display = PowerLawCutoffFree(
-                e_low_true, e_high_true, matrix, exposure, E_pivot_val)
-            model_display.amplitude.value = amplitude
-            model_display.alpha.value = alpha
+            model_display = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure)
+            for p in ["amplitude", "alpha"]:
+                getattr(model_display, p).value = getattr(fitted, p).value
+            model_display.E_cut = E_cut_val
 
             model_y = to_unit(model_display(x_fake))
 
@@ -1418,7 +1468,7 @@ class Fitting:
             model_template = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix_fit, exposure, E_cut_val, E_pivot_val)
             fitted = self.fit_unconstrained_then_bounded(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["amplitude", "alpha"], bounds_map, initial_values)
 
             amplitude, alpha = fitted.amplitude.value, fitted.alpha.value
@@ -1439,8 +1489,6 @@ class Fitting:
             fit_mask = (edges_det[:-1] >= fit_Emin) & (edges_det[1:] <= E_cut_val)
 
             x_fit = np.zeros(fit_mask.sum())
-            counts_fit = counts[fit_mask]
-            counts_err_fit = counts_err[fit_mask]
             matrix_fit = matrix[:, fit_mask]
             x_fake = np.zeros_like(counts)
 
@@ -1452,7 +1500,7 @@ class Fitting:
             model_template = VTH(
                 e_low_true, e_high_true, matrix_fit, exposure)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["EM", "T"], model_key, initial_values=initial_values)
 
             T, EM = fitted.T.value, fitted.EM.value
@@ -1498,8 +1546,8 @@ class Fitting:
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
             E_pivot_val = initial_values.get("E_pivot", 100.0)
 
-            y_fit = counts_fit / exposure
-            y_err = counts_err_fit / exposure
+            y_fit = y_fit
+            y_err = y_err
 
             model_template = PowerLawCutoffFree(
                 e_low_true, e_high_true, matrix_fit, exposure, E_pivot_val)
@@ -1527,8 +1575,6 @@ class Fitting:
             fit_mask = (edges_det[:-1] >= fit_Emin) & (edges_det[1:] <= E_cut_val)
 
             x_fit = np.zeros(fit_mask.sum())
-            counts_fit = counts[fit_mask]
-            counts_err_fit = counts_err[fit_mask]
             matrix_fit = matrix[:, fit_mask]
             x_fake = np.zeros_like(counts)
 
@@ -1540,7 +1586,7 @@ class Fitting:
             model_template = VTH(
                 e_low_true, e_high_true, matrix_fit, exposure)
             fitted = self.fit_with_bounds_check(
-                model_template, x_fit, counts_fit / exposure, counts_err_fit / exposure,
+                model_template, x_fit, y_fit, y_err,
                 ["EM", "T"], model_key, initial_values=initial_values)
 
             T, EM = fitted.T.value, fitted.EM.value
