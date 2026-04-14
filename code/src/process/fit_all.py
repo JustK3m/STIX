@@ -74,7 +74,8 @@ class Fitting:
         "V_TH + PowerLawCutoffFix": {"EM": 1e48, "T": 1.0,
                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0, "E_cut": 10},
         "V_TH + PowerLawCutoffFree": {"EM": 1e48, "T": 1.0,
-                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
+                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
+                                      "Ec_min": 4, "Ec_max":20},
     }
 
     # create a new window called 'SPEX Fit Options'
@@ -1458,7 +1459,7 @@ class Fitting:
         #  7 — V_TH + Cutoff Fix
         # ══════════════════════════════════════════════════════════
         elif idx == 7:
-            model_key = "PowerLawCutoffFix"
+            model_key = "V_TH + PowerLawCutoffFix"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
@@ -1492,7 +1493,6 @@ class Fitting:
             matrix_fit = matrix[:, fit_mask]
             x_fake = np.zeros_like(counts)
 
-            model_key = "V_TH"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
@@ -1540,29 +1540,48 @@ class Fitting:
         #  8 — V_TH + Cutoff Free
         # ══════════════════════════════════════════════════════════
         elif idx == 8:
-            model_key = "PowerLawCutoffFree"
+            model_key = "V_TH + PowerLawCutoffFree"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
+            E_cut_bound = (initial_values.get("Ec_min", fit_Emin), initial_values.get("Ec_max", fit_Emax))
             E_pivot_val = initial_values.get("E_pivot", 100.0)
 
-            y_fit = y_fit
-            y_err = y_err
-
-            model_template = PowerLawCutoffFree(
+            model_template = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix_fit, exposure, E_pivot_val)
+
+            def chi2_for_Ecut(E_cut_val):
+                print(E_cut_val)
+                model_template.E_cut = E_cut_val
+                fitted_model = self.fit_unconstrained_then_bounded(
+                    model_template, x_fit, y_fit, y_err,
+                    ["amplitude", "alpha"], bounds_map, initial_values
+                )
+                return np.sum(((y_fit - fitted_model(x_fit)) / (y_err + 1e-30)) ** 2)
+
+            result = minimize_scalar(
+                chi2_for_Ecut,
+                bounds=E_cut_bound,
+                method="bounded",
+                options={"xatol": 1e-3}
+            )
+
+            E_cut_val = result.x
+
+            # Récupérer le modèle final au E_cut optimal
+            model_template.E_cut = E_cut_val
             fitted = self.fit_unconstrained_then_bounded(
                 model_template, x_fit, y_fit, y_err,
-                ["amplitude", "alpha"], bounds_map, initial_values)
+                ["amplitude", "alpha"], bounds_map, initial_values
+            )
 
             amplitude = fitted.amplitude.value
             alpha = fitted.alpha.value
-            E_cut_val = fitted.E_cut.value
 
-            model_display = PowerLawCutoffFree(
-                e_low_true, e_high_true, matrix, exposure, E_pivot_val)
-            model_display.amplitude.value = amplitude
-            model_display.alpha.value = alpha
+            model_display = ForwardFolded.PowerLawCutoffFix(e_low_true, e_high_true, matrix, exposure)
+            for p in ["amplitude", "alpha"]:
+                getattr(model_display, p).value = getattr(fitted, p).value
+            model_display.E_cut = E_cut_val
 
             model_y = to_unit(model_display(x_fake))
 
@@ -1578,7 +1597,6 @@ class Fitting:
             matrix_fit = matrix[:, fit_mask]
             x_fake = np.zeros_like(counts)
 
-            model_key = "V_TH"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
