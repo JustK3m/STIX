@@ -109,7 +109,6 @@ helpmenu = Menu(mainmenu, tearoff=0)
 
 filemenu.add_command(label="Select Input ...", command=SelectInput)
 filemenu.add_command(label="Select Background ...", command=SelectBackground)
-# filemenu.add_command(label="Select Fit Options and Do Fit (Test) ...", command=Fitting)
 filemenu.add_command(label="Plot Fit Results ...", command=ResponseFitting)
 filemenu.add_command(label="Set parameters manually ...")
 filemenu.add_command(label="Set parameters from script")

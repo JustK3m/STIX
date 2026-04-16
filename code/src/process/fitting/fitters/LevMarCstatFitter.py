@@ -1,19 +1,3 @@
-"""
-LevMarCstatFitter — Levenberg-Marquardt fitter using the Cash C-statistic.
-
-Corrections vs. version originale
------------------------------------
-1. Formule C-stat corrigée : 2*(M - O + O*ln(O/M))  [terme O*ln(O) inclus]
-2. Suppression des imports tkinter inutiles (Variable, StringVar)
-3. Calcul de covariance activé et corrigé pour C-stat  (facteur 2 inclus)
-4. Prise en compte des bornes (bounds) définies sur les paramètres astropy
-5. Restauration du modèle à p_best même en cas d'échec partiel
-6. Résidus signés corrects pour que sum(r²) == C-stat
-7. Tolérance / max_iter stockées comme attributs Python simples (pas tkinter)
-
-Dependencies: astropy, scipy, numpy
-"""
-
 import logging
 import warnings
 from tkinter import Variable
@@ -25,26 +9,33 @@ from scipy.optimize import least_squares
 
 class LevMarCstatFitter(_NonLinearLSQFitter):
     """
-    Fitter Levenberg-Marquardt minimisant la statistique de Cash (C-stat).
+    Fitter de Levenberg-Marquardt minimisant la statistique de Cash (C-stat)
+    plutôt que le chi-carré classique, adapté aux données de comptage faible
+    (régime de Poisson).
 
-    La C-stat est définie par :
-        C = 2 * Σ [ M_i - O_i + O_i * ln(O_i / M_i) ]
+    C = 2 * sum_i | M_i - D_i * ln(M_i) |
 
-    où O_i sont les counts observés et M_i les prédictions du modèle.
-    Elle est adaptée aux données de Poisson (spectres X, photons, etc.).
-
-    Parameters
-    ----------
-    calc_uncertainties : bool
-        Si True, calcule la matrice de covariance et les incertitudes 1σ.
+    Hérite de astropy.modeling.fitting._NonLinearLSQFitter.
 
     Attributes
     ----------
+    max_iter : int
+        Nombre maximum d'itérations de l'algorithme (défaut : 500).
     fit_info : dict
-        Informations renvoyées par scipy après le fit.
+        Dictionnaire de diagnostic rempli après chaque appel :
+        {'nfev', 'cost', 'status', 'message', 'success'}.
+    logger : logging.Logger
+        Logger interne pour les messages de convergence.
     """
 
     def __init__(self, calc_uncertainties=False):
+        """
+        Parameters
+        ----------
+        calc_uncertainties : bool, optional
+            Calcul des incertitudes sur les paramètres (défaut : False).
+            Transmis à la classe parente _NonLinearLSQFitter.
+        """
         super().__init__(calc_uncertainties)
 
         # Configuration basique du logger (à adapter à ton projet)
@@ -59,7 +50,26 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
     # ------------------------------------------------------------------
 
     def log_fit_info(self, fit_info: dict) -> None:
-        """Affiche un résumé lisible du résultat du fit."""
+        """
+        Journalise le résultat de convergence du fitter à partir du
+        dictionnaire fit_info.
+
+        Parameters
+        ----------
+        fit_info : dict or None
+            Dictionnaire retourné après l'ajustement. Clés attendues :
+            - 'success' (bool) : convergence atteinte ou non.
+            - 'status' (int)   : code de retour du solveur scipy.
+            - 'message' (str)  : message textuel du solveur.
+            - 'nfev' (int)     : nombre d'évaluations de la fonction coût.
+            - 'cost' (float)   : valeur finale de C-stat / 2.
+            - 'param_cov'      : matrice de covariance (si disponible).
+
+        Returns
+        -------
+        None
+            Journalise via self.logger (INFO / WARNING / ERROR / DEBUG).
+        """
         if fit_info is None:
             self.logger.warning("Aucune information de fit (fit_info est None).")
             return
@@ -127,11 +137,6 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         """
         Extrait les bornes (min/max) définies sur les paramètres libres
         du modèle astropy.
-
-        FIX : l'original ignorait complètement les bornes, ce qui pouvait
-        conduire à des valeurs physiquement impossibles (flux négatif, etc.).
-        Quand des bornes existent, on bascule sur method='trf' car 'lm'
-        ne supporte pas les contraintes de bornes.
         """
         lower, upper = [], []
         for name in model.param_names:
@@ -150,25 +155,37 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
 
     def __call__(self, model, x, y, weights=None, **kwargs):
         """
-        Ajuste `model` aux données (x, y) en minimisant le C-stat.
+        Lance l'ajustement du modèle en minimisant le vecteur de résidus
+        C-stat via scipy.optimize.least_squares (méthode 'lm').
+
+        La fonction résidu vectorisée est :
+            r_i = 2 * | M_i(theta) - D_i * ln(M_i(theta)) |
+        avec M_i clampé à 1e-12 pour éviter ln(0).
 
         Parameters
         ----------
-        model : astropy.modeling.core.Model
-            Modèle à ajuster (ses paramètres libres sont modifiés in-place).
-        x : array_like
-            Variable indépendante.
-        y : array_like
-            Counts observés (≥ 0, distribution de Poisson supposée).
-        weights : array_like or None
-            Poids optionnels appliqués aux résidus C-stat.
+        model : astropy FittableModel
+            Modèle à ajuster. Ses paramètres sont modifiés en place
+            par le fitter.
+        x : array-like
+            Variable indépendante (vecteur fantôme de zéros pour les
+            modèles ForwardFolded).
+        y : array-like
+            Données observées D_i (coups s-1 ou coups selon l'unité).
+        weights : array-like or None, optional
+            Poids appliqués au vecteur résidu. Doit avoir la même forme
+            que y. Si None, tous les points ont le même poids.
         **kwargs
-            Arguments supplémentaires transmis à `least_squares`.
+            Arguments supplémentaires transmis à scipy.least_squares.
 
         Returns
         -------
-        model : astropy.modeling.core.Model
-            Modèle avec les paramètres du meilleur ajustement.
+        model : astropy FittableModel
+            Modèle avec ses paramètres mis à jour à la solution optimale.
+
+        Side effects
+        ------------
+        self.fit_info est mis à jour avec les métriques de convergence.
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)

@@ -1,3 +1,3 @@
-from .ForwardFolded import PowerLawCutoffFix, PowerLawCutoffFree, PowerLaw, VTHPlusPowerLawCutoffFix, VTHPlusPowerLaw, VTHPlusPowerLawCutoffFree, VTH, ExpPowerLaw, BrokenPowerLaw, integrate_flux
+from .ForwardFolded import PowerLawCutoffFix, PowerLaw, VTHPlusPowerLaw, VTH, ExpPowerLaw, BrokenPowerLaw, integrate_flux
 
-__all__ = ["PowerLawCutoffFix", "PowerLawCutoffFree", "PowerLaw", "VTHPlusPowerLawCutoffFix", "VTHPlusPowerLaw", "VTHPlusPowerLawCutoffFree", "VTH", "ExpPowerLaw", "BrokenPowerLaw", "integrate_flux"]
+__all__ = ["PowerLawCutoffFix", "PowerLaw", "VTHPlusPowerLaw", "VTH", "ExpPowerLaw", "BrokenPowerLaw", "integrate_flux"]

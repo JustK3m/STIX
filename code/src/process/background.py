@@ -1532,10 +1532,4 @@ class BackgroundWindow:
         span = SpanSelector(ax, onselect, 'horizontal', useblit=True,
                             props=dict(alpha=0.5, facecolor='red'))
 
-
         plt.show()
-
-
-
-
-
