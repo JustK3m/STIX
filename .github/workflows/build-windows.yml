@@ -25,7 +25,7 @@ jobs:
       - name: Build EXE with PyInstaller
         run: |
           cd code
-          rm -rf dist
+          rmdir dist
           mkdir dist
           pyinstaller --onefile --windowed --noconsole --add-data "data;data" --name "STIX Solor Orbiter" --paths=src --hidden-import matplotlib.backends.backend_tkagg src/main.py
   
