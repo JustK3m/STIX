@@ -23,7 +23,9 @@
 import webbrowser
 from tkinter import *
 from tkinter import messagebox
+
 from process import inputWindow, background, fit_all
+from user_guide import open_user_guide
 
 
 # ========================= Functions to activate the menu bars and menu options =========================
@@ -39,13 +41,10 @@ def SelectBackground():
     background.BackgroundWindow(root)
 
 
-#def Fitting():
-#    """Creating a new window where user can select function to fit and plot (counts data)."""
-#    do_fit.Fitting(root)
-
 def ResponseFitting():
     """Creating a new window where user can select function to fit and plot with matrix response."""
     fit_all.Fitting(root)
+
 
 def STIX_Guide():
     """Opens up HTML version of the OSPEX documentation using default browser."""
@@ -68,6 +67,11 @@ def clickedHelp_on_Help():
                                                  'activated.'
                                                  '\n\nThe browser may start in iconized mode.'
                                                  '\nIf it does not appear, you may need to find it on the taskbar.')
+
+
+def clickedUserGuide():
+    open_user_guide()
+
 
 
 # ========================= Creating main window =========================
@@ -99,7 +103,6 @@ Label(root,
       fg="blue",
       font="Times",
       justify='left').pack()
-
 
 # ============================ Adding the menu bars in main window ============================
 
@@ -160,6 +163,7 @@ windowmenu.add_command(label="Multi-Panel Options")
 helpmenu.add_command(label="STIX Guide", command=STIX_Guide)
 helpmenu.add_command(label="Contacts", command=clickedContact)
 helpmenu.add_command(label="Help on Help", command=clickedHelp_on_Help)
+helpmenu.add_command(label="User Guide", command=clickedUserGuide)
 
 mainmenu.add_cascade(label="File", menu=filemenu)
 mainmenu.add_cascade(label="Window_Control", menu=windowmenu)

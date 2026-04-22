@@ -98,12 +98,12 @@ class Fitting:
         "PowerLawCutoffFix": {"amplitude": 1e-2, "alpha": 2.0,
                               "E_cut": 10.0, "E_pivot": 100.0},
         "PowerLawCutoffFree": {"amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
-                               "Ec_min": 4, "Ec_max":20},
+                               "Ec_min": 4, "Ec_max": 20},
         "V_TH x PowerLawCutoffFix": {"EM": 1e48, "T": 1.0,
                                      "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0, "E_cut": 10},
         "V_TH x PowerLawCutoffFree": {"EM": 1e48, "T": 1.0,
                                       "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
-                                      "Ec_min": 4, "Ec_max":20},
+                                      "Ec_min": 4, "Ec_max": 20},
     }
 
     # create a new window called 'SPEX Fit Options'
@@ -421,14 +421,15 @@ class Fitting:
         self.frameFit.place(relx=0.05, rely=0.63, relheight=0.25, relwidth=0.85)  # the frame position
 
         Label(self.frameFit, text="Plot Units: ", fg='blue',
-                                font=("Helvetica", 11, "bold")).place(relx=0.04, rely=0.4)
+              font=("Helvetica", 11, "bold")).place(relx=0.04, rely=0.4)
 
         # Add button for Units: Rate, Counts, Flux
         # Allows user to make a choice between three parameters
         self.Component_choicesFit = ('Rate', 'Counts', 'Flux')
         self.var = StringVar(self.frameFit)
         self.var.set(self.Component_choicesFit[0])
-        OptionMenu(self.frameFit, self.var, *self.Component_choicesFit).place(relx=0.15, rely=0.38, relheight=0.23, relwidth=0.15)
+        OptionMenu(self.frameFit, self.var, *self.Component_choicesFit).place(relx=0.15, rely=0.38, relheight=0.23,
+                                                                              relwidth=0.15)
 
         self.show_params_var = IntVar(value=1)  # Par défaut cochée
         Checkbutton(
@@ -466,7 +467,10 @@ class Fitting:
         ).place(relx=0.55, rely=0.5)
 
         Button(self.frameFit, text="Do Fit",
-               command=self._selective_fit).place(relx=0.70, rely=0.38, relheight=0.23, relwidth=0.15)  # locate
+               command=self._selective_fit).place(relx=0.70, rely=0.20, relheight=0.23, relwidth=0.15)  # locate
+
+        Button(self.frameFit, text="Close Plots", command=lambda: plt.close('all')).place(relx=0.70, rely=0.60,
+                                                                                          relheight=0.27, relwidth=0.15)
 
         Button(self.top2, text="Refresh").place(relx=0.4, rely=0.94)
 
@@ -481,85 +485,85 @@ class Fitting:
             self.lbox.insert(END, p)
         self.lbox.bind("<<ListboxSelect>>", self.onSelect)
         self.list = {
-                'PowerLaw1D': ['One dimensional power law model',
-                                    'amplitude – model amplitude at the reference energy',
-                                    'Epivot – energie pivot (kEv)',
-                                    'energy_data – reference energy', 'alpha – power law index'
-                                    ],
-                     # if user choose PowerLaw1D, display
-                     'BrokenPowerLaw1D': ['One dimensional power law model with a break',
-                                          'amplitude - model amplitude at the break energy',
-                                          'alpha 1 – power law index for energy_data<x_break',
-                                          'alpha 2 – power law index for energy_data>x_break'],
-                     # if user choose BrokenPowerLaw1D, display
-                     'Gaussian': ['Single Gaussian function(high quality), width in sigma',
-                                  'does not go through DRM',
-                                  'This function returns the sum of Gaussian and ', '2nd order Polynomial',
-                                  'amplitude - integrated intensity, mean - centroid', 'stddev - sigma'],
-                     # if user choose Gaussian, display
-                     'Polynomial': ['Polynomial function with offset in energy_data',
-                                    'c0 - 0th order coefficient', 'c1 - 1st order coefficient',
-                                    'c2 - 2nd order coefficient',
-                                    'c3 - 3rd order coefficient', 'c4 - 4th order coefficient',
-                                    'c5 - energy_data offset, such that function value at energy_data = c5 is C0 '],
-                     # Polynomial
-                     'Exponential': ['Exponential function', 't0 - Normalization',
-                                     't1 - Pseudo temperature'],  # Exponential
-                     'Single Power Law Times an Exponential': ['Multiplication of Single Power Law and Exponential',
+            'PowerLaw1D': ['One dimensional power law model',
+                           'amplitude – model amplitude at the reference energy',
+                           'Epivot – energie pivot (kEv)',
+                           'energy_data – reference energy', 'alpha – power law index'
+                           ],
+            # if user choose PowerLaw1D, display
+            'BrokenPowerLaw1D': ['One dimensional power law model with a break',
+                                 'amplitude - model amplitude at the break energy',
+                                 'alpha 1 – power law index for energy_data<x_break',
+                                 'alpha 2 – power law index for energy_data>x_break'],
+            # if user choose BrokenPowerLaw1D, display
+            'Gaussian': ['Single Gaussian function(high quality), width in sigma',
+                         'does not go through DRM',
+                         'This function returns the sum of Gaussian and ', '2nd order Polynomial',
+                         'amplitude - integrated intensity, mean - centroid', 'stddev - sigma'],
+            # if user choose Gaussian, display
+            'Polynomial': ['Polynomial function with offset in energy_data',
+                           'c0 - 0th order coefficient', 'c1 - 1st order coefficient',
+                           'c2 - 2nd order coefficient',
+                           'c3 - 3rd order coefficient', 'c4 - 4th order coefficient',
+                           'c5 - energy_data offset, such that function value at energy_data = c5 is C0 '],
+            # Polynomial
+            'Exponential': ['Exponential function', 't0 - Normalization',
+                            't1 - Pseudo temperature'],  # Exponential
+            'Single Power Law Times an Exponential': ['Multiplication of Single Power Law and Exponential',
 
-                                                               'p0 - normalization at epivot for power-law',
-                                                               'p1 - negative power - law index',
-                                                               'p2 - epivot (kEv) for power - law',
-                                                               'e1 - normalization for exponential',
-                                                               'e2 - pseudo temperature for exponential'],
-                     # Single Power Law Times an Exponential
-                     'Logistic Regression': ['Returns a sigmoid function'],  # Logistic Regression
-                     'Lorentz': ['One dimensional Lorentzian model',
-                                 'Amplitude correponds to peak value',
-                                 'x_0 is the peak position (default value is 0)'],  # Lorentz Model
-                     'Moffat': ['able to accurately reconstruct point spread functions',
-                                'Moffat distribution'],  # Moffat model
-                     'Voigt Profile': ['model computes the sum of Voigt function with a 2nd order polynomial',
-                                       'amplitude centered at x_0 with the specified Lorentzian and Gaussian widths'],
-                     # Voigt
-                     'V_TH': ['Thermal Bremsstrahlung Model',
-                              'T - Temperature (keV)',
-                              'EM - Emission Measure (cm^-3)'],
-                     'V_TH + PowerLaw': ['Addition of V_TH and Single Power Law',
+                                                      'p0 - normalization at epivot for power-law',
+                                                      'p1 - negative power - law index',
+                                                      'p2 - epivot (kEv) for power - law',
+                                                      'e1 - normalization for exponential',
+                                                      'e2 - pseudo temperature for exponential'],
+            # Single Power Law Times an Exponential
+            'Logistic Regression': ['Returns a sigmoid function'],  # Logistic Regression
+            'Lorentz': ['One dimensional Lorentzian model',
+                        'Amplitude correponds to peak value',
+                        'x_0 is the peak position (default value is 0)'],  # Lorentz Model
+            'Moffat': ['able to accurately reconstruct point spread functions',
+                       'Moffat distribution'],  # Moffat model
+            'Voigt Profile': ['model computes the sum of Voigt function with a 2nd order polynomial',
+                              'amplitude centered at x_0 with the specified Lorentzian and Gaussian widths'],
+            # Voigt
+            'V_TH': ['Thermal Bremsstrahlung Model',
+                     'T - Temperature (keV)',
+                     'EM - Emission Measure (cm^-3)'],
+            'V_TH + PowerLaw': ['Addition of V_TH and Single Power Law',
+                                'T - Temperature (keV)',
+                                'EM - Emission Measure (cm^-3)',
+                                'Amplitude - Model amplitude at the reference energy',
+                                'Alpha - Power law index',
+                                'Epivot – energie pivot (kEv)'
+                                ],
+            'Neural Network': ['Neural Network model', ],
+            'PowerLawCutoffFix': ['Power law model with fix cutoff',
+                                  'amplitude – model amplitude at the reference energy',
+                                  'Ec – Cutoff energy',
+                                  'alpha – power law index'
+                                  ],
+            'PowerLawCutoffFree': ['Power law model with free cutoff',
+                                   'amplitude – model amplitude at the reference energy',
+                                   'Ec – Cutoff energy',
+                                   'alpha – power law index'
+                                   ],
+            'V_TH x PowerLawCutoffFix': ['Mix of V_TH and Power Law with fix cutoff',
                                          'T - Temperature (keV)',
                                          'EM - Emission Measure (cm^-3)',
                                          'Amplitude - Model amplitude at the reference energy',
                                          'Alpha - Power law index',
-                                         'Epivot – energie pivot (kEv)'
-                                         ],
-                     'Neural Network': ['Neural Network model', ],
-                     'PowerLawCutoffFix': ['Power law model with fix cutoff',
-                                           'amplitude – model amplitude at the reference energy',
-                                           'Ec – Cutoff energy',
-                                           'alpha – power law index'
-                                           ],
-                     'PowerLawCutoffFree': ['Power law model with free cutoff',
-                                            'amplitude – model amplitude at the reference energy',
-                                            'Ec – Cutoff energy',
-                                            'alpha – power law index'
-                                            ],
-                     'V_TH x PowerLawCutoffFix': ['Mix of V_TH and Power Law with fix cutoff',
-                                                  'T - Temperature (keV)',
-                                                  'EM - Emission Measure (cm^-3)',
-                                                  'Amplitude - Model amplitude at the reference energy',
-                                                  'Alpha - Power law index',
-                                                  'Ec – Cutoff energy',
-                                                  'Epivot – energie pivot (kEv)'],
+                                         'Ec – Cutoff energy',
+                                         'Epivot – energie pivot (kEv)'],
 
-                     'V_TH x PowerLawCutoffFree': ['Mix of V_TH and Power Law with free cutoff',
-                                                   'T - Temperature (keV)',
-                                                   'EM - Emission Measure (cm^-3)',
-                                                   'Amplitude - Model amplitude at the reference energy',
-                                                   'Ec – Cutoff energy',
-                                                   'Alpha - Power law index',
-                                                   'Epivot – energie pivot (kEv)']
+            'V_TH x PowerLawCutoffFree': ['Mix of V_TH and Power Law with free cutoff',
+                                          'T - Temperature (keV)',
+                                          'EM - Emission Measure (cm^-3)',
+                                          'Amplitude - Model amplitude at the reference energy',
+                                          'Ec – Cutoff energy',
+                                          'Alpha - Power law index',
+                                          'Epivot – energie pivot (kEv)']
 
-                     }
+        }
 
         self.list_selection = Listbox(self.top2, highlightcolor='red', bd=4)
         self.list_selection.place(relx=0.33, rely=0.15, relheight=0.45, relwidth=0.30)
@@ -928,8 +932,6 @@ class Fitting:
                 )
                 if answer:
                     # ✅ close current Fit Options window and open Background window
-                    self.show_db_var.set(0)
-                    self.top2.destroy()
                     background.BackgroundWindow()
                 else:
                     # ✅ uncheck the checkbox
@@ -1292,9 +1294,6 @@ class Fitting:
         y_fit = counts_fit / exposure
         y_err = counts_err_fit / exposure
 
-        param_text = None
-        model_func_photon = None
-
         # ── Unités ────────────────────────────────────────────────
         rate = counts / exposure
         rate_err = counts_err / exposure
@@ -1349,12 +1348,18 @@ class Fitting:
             plt.xlabel("Energy (keV)")
             plt.ylabel("Photon flux [photons / (s cm² keV)]")
             plt.title(f"Photon Flux Model using {self.statname}")
+            if self.grid_var.get():
+                plt.grid(True, which="both", ls="--", alpha=0.5)
             plt.legend()
             if self.show_params_var.get():
                 add_param_text(param_txt)
             plt.tight_layout()
 
         # ── Plot données ───────────────────────────────────────────
+
+        param_text = None
+        model_func_photon = None
+
         plt.figure()
         plt.step(edges_det[:-1], y_data, where='post',
                  label=f'{absolute_name} ({unit})', color='red')
@@ -1633,7 +1638,7 @@ class Fitting:
                 chi2_for_Ecut,
                 bounds=E_cut_bound,
                 method="bounded",
-                options={"xatol":1e-3}
+                options={"xatol": 1e-3}
             )
 
             E_cut_val = result.x
@@ -1844,7 +1849,7 @@ class Fitting:
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted VTH Model', color='purple')
 
-            param_text = (f"V_TH + Power Law Cutoff Fix:\n"
+            param_text = (f"V_TH + Power Law Cutoff Free:\n"
                           f" T={T:.2f} keV  EM={EM:.2e} cm⁻³\n"
                           f" amplitude={amplitude:.2e}  alpha={alpha:.2f}\n"
                           f" E_pivot={E_pivot_val:.2f} keV  E_cut={E_cut_val:.2f} keV")

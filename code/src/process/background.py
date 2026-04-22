@@ -708,6 +708,10 @@ class BackgroundWindow:
             band=i
         ).graphical_selection()
 
+        if dt_start is None or dt_end is None:
+            print("[graphical_interval] Aucune sélection effectuée, abandon.")
+            return
+
         if dt_start is not None and dt_end is not None:
             BackgroundWindow.DATA_BKG_SELECTED = True
             print('background selection enabled', BackgroundWindow)
@@ -1526,10 +1530,17 @@ class BackgroundWindow:
             # ✅ Close the plot window
             plt.close()
 
-
         fig = plt.gcf()
         ax = plt.gca()
-        span = SpanSelector(ax, onselect, 'horizontal', useblit=True,
-                            props=dict(alpha=0.5, facecolor='red'))
+
+        # ↓ Stocké dans self pour éviter le garbage-collect
+        self._span_selector = SpanSelector(
+            ax, onselect, 'horizontal', useblit=True,
+            props=dict(alpha=0.5, facecolor='red')
+        )
+
+        # ↓ Force le focus sur cette fenêtre
+        fig.canvas.manager.window.lift()
+        fig.canvas.manager.window.focus_force()
 
         plt.show()
