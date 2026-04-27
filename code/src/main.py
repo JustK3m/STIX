@@ -25,6 +25,7 @@ from tkinter import *
 from tkinter import messagebox
 
 from process import inputWindow, background, fit_all
+from process.downloader import STIXDownloader
 from user_guide import open_user_guide
 
 
@@ -109,6 +110,12 @@ Label(root,
 filemenu = Menu(mainmenu, tearoff=0)
 windowmenu = Menu(mainmenu, tearoff=0)
 helpmenu = Menu(mainmenu, tearoff=0)
+
+# Dans la construction du menu :
+filemenu.add_command(
+    label="Download STIX Data...",
+    command=lambda: STIXDownloader(root)
+)
 
 filemenu.add_command(label="Select Input ...", command=SelectInput)
 filemenu.add_command(label="Select Background ...", command=SelectBackground)

@@ -31,7 +31,7 @@ def integrate_flux(e1, e2, model_func, n_points=10):
 
     energies = np.linspace(e1, e2, n_points)
     fluxes = model_func(energies)
-    return np.trapz(fluxes, energies) / (e2 - e1)
+    return np.trapezoid(fluxes, energies) / (e2 - e1)
 
 
 # ══════════════════════════════════════════════════════════

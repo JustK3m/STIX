@@ -1,35 +1,23 @@
-import numpy as np
 import datetime
-import re
-from tkinter import *
-from astropy.io import fits
-from tkinter.filedialog import askopenfilename
-from .graphics import IntervalSelector
-from . import inputWindow
 import os
+import re
 import sys
+from tkinter import *
+from tkinter.filedialog import askopenfilename
+
+import numpy as np
+from astropy.io import fits
+
+from . import inputWindow
+from .graphics import IntervalSelector
 
 
 class BackgroundWindow:
-    """Class to create a background Window"""
-    # FIXME: When tests are finished, remember to set fname as None, this is just to gain time for each test
-    # fname = 'solo_L1A_stix-sci-spectrogram' \
-    #         '-2102140001_20210214T014006-20210214T015515_008648_V01.fits'
-    
-    fname_r = 'data/solo_L1_stix-sci-xray-spec_20230319T175504-20230320T000014_V02_2303197888-65462.fits'
-
-    def resource_path(relative_path):
-        """Renvoie le chemin absolu même si l'app est congelée avec PyInstaller"""
-        if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, relative_path)
-        return os.path.join(relative_path)
-    
-    fname = resource_path(fname_r)  # Default file to open
 
     DATA_BKG_SELECTED = False  # If background data has been selected by user
-    DATA_BKG_RESULT = None     # Result of the background calculation, to be used in other windows
+    DATA_BKG_RESULT = None  # Result of the background calculation, to be used in other windows
     DATA_BKG_START = None  # Starting time of the background data, to be used in other windows
-    DATA_BKG_END = None    # Ending time of the background data, to be used in other windows
+    DATA_BKG_END = None  # Ending time of the background data, to be used in other windows
 
     def __init__(self, root=None, show=True):
         """The main interest of this class is to calculate background caused by instruments and plot the data after
@@ -39,114 +27,114 @@ class BackgroundWindow:
             show (bool): if True, a new window called 'Select Background' will be opened, containing options to plot
                          data, background, and error."""
 
-        self.root = root            # Root of the file
-        self.hdul = None            # Opened file
-        self.hdulist = None         # Data reading
-        self.name = None            # Name of the .fits file imported
+        self.root = root  # Root of the file
+        self.hdul = None  # Opened file
+        self.hdulist = None  # Data reading
+        self.name = None  # Name of the .fits file imported
 
-        self.counts = None          # Matrix contaning the counts per band in function of time time
-        self.counts_err = None      # Matrix contaning the error of the counts per band in function of time
-        self.times = None           # Index of times for x axis
-        self.del_times = None       # List containing the difference between two successive times
-        self.data = None            # Converts self.counts in chosen unit (rate, counts or flux) and adds time index
-        self.data_err = None        # Converts self.counts_err in chosen unit (rate, counts or flux) and adds time index
-        self.del_data = None        # Delayed data to match times
-        self.bkg = None             # Calculated background noise
-        self.data_bkg = None        # Data without background noise
-        self.area = 6               # Area of the surface of detection of the telescope in cm²; used for the flux
+        self.counts = None  # Matrix contaning the counts per band in function of time time
+        self.counts_err = None  # Matrix contaning the error of the counts per band in function of time
+        self.times = None  # Index of times for x axis
+        self.del_times = None  # List containing the difference between two successive times
+        self.data = None  # Converts self.counts in chosen unit (rate, counts or flux) and adds time index
+        self.data_err = None  # Converts self.counts_err in chosen unit (rate, counts or flux) and adds time index
+        self.del_data = None  # Delayed data to match times
+        self.bkg = None  # Calculated background noise
+        self.data_bkg = None  # Data without background noise
+        self.area = 6  # Area of the surface of detection of the telescope in cm²; used for the flux
 
-        self.nb_bands = StringVar()     # Number of energy bands to plot
-        self.lower_bands = list()       # Lower bounds for energy bands from .fits file
-        self.upper_bands = list()       # Upper bounds for energy bands from .fits file
-        self.energies_low = []          # Lower bounds for energy bands chosen by user
-        self.energies_high = []         # Upper bounds for energy bands chosen by user
-        self.rounded = int()            # Nearest rounded value to fit in energy list; used in function self.round
+        self.nb_bands = StringVar()  # Number of energy bands to plot
+        self.lower_bands = list()  # Lower bounds for energy bands from .fits file
+        self.upper_bands = list()  # Upper bounds for energy bands from .fits file
+        self.energies_low = []  # Lower bounds for energy bands chosen by user
+        self.energies_high = []  # Upper bounds for energy bands chosen by user
+        self.rounded = int()  # Nearest rounded value to fit in energy list; used in function self.round
 
-        self.start_date = []            # Starting date at format YYYY-MM-DD-HH-MM-SS
-        self.end_date = []              # Ending date at format YYYY-MM-DD-HH-MM-SS
-        self.date_day = None            # Date at format YYYY-MM-DD
-        self.date_time = None           # Time at format HH-MM-SS
-        self.start_time = int()         # Starting time in seconds
-        self.end_time = int()           # Ending time in seconds
+        self.start_date = []  # Starting date at format YYYY-MM-DD-HH-MM-SS
+        self.end_date = []  # Ending date at format YYYY-MM-DD-HH-MM-SS
+        self.date_day = None  # Date at format YYYY-MM-DD
+        self.date_time = None  # Time at format HH-MM-SS
+        self.start_time = int()  # Starting time in seconds
+        self.end_time = int()  # Ending time in seconds
 
-        self.choice_bands = None                        # OptionMenu to choose number of bands
-        self.list_bands = ('1', '2', '3', '4', '5')     # Choices for number of bands dropdown list
+        self.choice_bands = None  # OptionMenu to choose number of bands
+        self.list_bands = ('1', '2', '3', '4', '5')  # Choices for number of bands dropdown list
 
-        self.type = str()                               # Data type (rate, counts, flux)
-        self.unit_var = StringVar()                     # StringVar for data type
+        self.type = str()  # Data type (rate, counts, flux)
+        self.unit_var = StringVar()  # StringVar for data type
         self.unit_choices = ('Rate', 'Counts', 'Flux')  # Choices for data type
 
-        self.method_list = list()                       # Background methods calculation
-        self.method_var = list()                        # StringVars for background methods calculation
+        self.method_list = list()  # Background methods calculation
+        self.method_var = list()  # StringVars for background methods calculation
         self.method_choices = ('Median', 'Mean', '1Poly', '2Poly', '3Poly', 'Exp')  # Choices for background methods
 
         if show:
-            self.bkg_window = None          # Background main window
-            self.frame1 = None              # Frame 1: Data & Unit Plotting
-            self.frame2 = None              # Frame 2: Number of Bands Selection
-            self.frame3 = None              # Frame 3: Energy Interval Selection
-            self.frame4 = None              # Frame 4: Time Interval Selection
-            self.frame5 = None              # Frame 5: Plot Units
+            self.bkg_window = None  # Background main window
+            self.frame1 = None  # Frame 1: Data & Unit Plotting
+            self.frame2 = None  # Frame 2: Number of Bands Selection
+            self.frame3 = None  # Frame 3: Energy Interval Selection
+            self.frame4 = None  # Frame 4: Time Interval Selection
+            self.frame5 = None  # Frame 5: Plot Units
 
-            self.state_bkg = DISABLED       # State for buttons in frame 3
-            self.state_time = DISABLED      # State for buttons in frame 4
-            self.backup_bkg = 0             # Keeps trace of number of boxes with bkg have been ticked in frame 1
+            self.state_bkg = DISABLED  # State for buttons in frame 3
+            self.state_time = DISABLED  # State for buttons in frame 4
+            self.backup_bkg = 0  # Keeps trace of number of boxes with bkg have been ticked in frame 1
 
-            self.label1 = None              # Title label for frame 1
-            self.label_filename = None      # Text for choosing file
-            self.label2 = None              # Title label for frame 2
-            self.text_min_energy = None     # Text for min energy
-            self.text_max_energy = None     # Text for max energy
-            self.label4 = None              # Title label for frame 3
-            self.text_start_time = None     # Text for starting time
-            self.text_end_time = None       # Text for ending time
-            self.text_noise = None          # Text for noise calculation method
-            self.label5 = None              # Title label for frame 5
+            self.label1 = None  # Title label for frame 1
+            self.label_filename = None  # Text for choosing file
+            self.label2 = None  # Title label for frame 2
+            self.text_min_energy = None  # Text for min energy
+            self.text_max_energy = None  # Text for max energy
+            self.label4 = None  # Title label for frame 3
+            self.text_start_time = None  # Text for starting time
+            self.text_end_time = None  # Text for ending time
+            self.text_noise = None  # Text for noise calculation method
+            self.label5 = None  # Title label for frame 5
 
-            self.menu_units = None                  # Dropdown list to choose data unit type
-            self.btn_time_profile_plotting = None   # Plot time profile button
-            self.close = None                       # Close button
+            self.menu_units = None  # Dropdown list to choose data unit type
+            self.btn_time_profile_plotting = None  # Plot time profile button
+            self.close = None  # Close button
 
-            self.text_filename = None               # Entrybox displaying the path of the chosen file
-            self.btn_browse = None                  # Browse button to import a file
-            self.btn_og_data = None                 # Checkbutton to plot original data
-            self.btn_bkg = None                     # Checkbutton to plot background noise
-            self.btn_data_bkg = None                # Checkbutton to plot data after removing background noise
-            self.btn_error = None                   # Checkbutton to plot error on data
-            self.btn_sep_times = None               # Checkbutton to decide different times for each band for background
+            self.text_filename = None  # Entrybox displaying the path of the chosen file
+            self.btn_browse = None  # Browse button to import a file
+            self.btn_og_data = None  # Checkbutton to plot original data
+            self.btn_bkg = None  # Checkbutton to plot background noise
+            self.btn_data_bkg = None  # Checkbutton to plot data after removing background noise
+            self.btn_error = None  # Checkbutton to plot error on data
+            self.btn_sep_times = None  # Checkbutton to decide different times for each band for background
 
-            self.var_og_data = IntVar(value=1)      # Variable for original data checkbox; ticked by default
-            self.var_bkg = IntVar()                 # Variable for background checkbox
-            self.var_data_bkg = IntVar()            # Variable for data - background checkbox
-            self.var_error = IntVar()               # Variable for error checkbox
-            self.var_sep_times = IntVar(value=1)    # Variable for separate times checkbox
+            self.var_og_data = IntVar(value=1)  # Variable for original data checkbox; ticked by default
+            self.var_bkg = IntVar()  # Variable for background checkbox
+            self.var_data_bkg = IntVar()  # Variable for data - background checkbox
+            self.var_error = IntVar()  # Variable for error checkbox
+            self.var_sep_times = IntVar(value=1)  # Variable for separate times checkbox
 
-            self.energy_min = list()                # Entry boxes for lower bounds of energy bands
-            self.energy_max = list()                # Entry boxes for upper bounds of energy bands
-            self.time_min = list()                  # Entry boxes for lower bounds of time intervals
-            self.time_max = list()                  # Entry boxes for upper bounds of time intervals
-            self.btn_graphical = list()             # Buttons to select time intervals on the time profile plot
-            self.btn_spectrogram = list()            # Buttons to select energy bands on the spectrogram plot
-            self.method_selection = list()  
+            self.energy_min = list()  # Entry boxes for lower bounds of energy bands
+            self.energy_max = list()  # Entry boxes for upper bounds of energy bands
+            self.time_min = list()  # Entry boxes for lower bounds of time intervals
+            self.time_max = list()  # Entry boxes for upper bounds of time intervals
+            self.btn_graphical = list()  # Buttons to select time intervals on the time profile plot
+            self.btn_spectrogram = list()  # Buttons to select energy bands on the spectrogram plot
+            self.method_selection = list()
             self.energy_min_var = []
-            self.energy_max_var = []        # Dropdown lists to select method for background calculation
+            self.energy_max_var = []  # Dropdown lists to select method for background calculation
 
-            self.energy_min_list = list()           # Storage for lower bounds of energy bands
-            self.energy_max_list = list()           # Storage for upper bounds of energy bands
-            self.time_min_list = list()             # Storage for lower bounds of time intervals
-            self.time_max_list = list()             # Storage for upper bounds of time intervals
+            self.energy_min_list = list()  # Storage for lower bounds of energy bands
+            self.energy_max_list = list()  # Storage for upper bounds of energy bands
+            self.time_min_list = list()  # Storage for lower bounds of time intervals
+            self.time_max_list = list()  # Storage for upper bounds of time intervals
 
-            self.bkg_start_time = list()            # Storage for starting times selected on "Graphical"
-            self.bkg_end_time = list()              # Storage for ending times selected on "Graphical"
-            self.bkg_start_index = list()           # Storage for starting indexes selected on "Graphical"
-            self.bkg_end_index = list()             # Storage for ending indexes selected on "Graphical"
+            self.bkg_start_time = list()  # Storage for starting times selected on "Graphical"
+            self.bkg_end_time = list()  # Storage for ending times selected on "Graphical"
+            self.bkg_start_index = list()  # Storage for starting indexes selected on "Graphical"
+            self.bkg_end_index = list()  # Storage for ending indexes selected on "Graphical"
 
-            self.title = str()                      # Label for the title of the plot
-            self.xlabel = str()                     # Label for x axis
-            self.ylabel = str()                     # Label for y axis
-            self.time_scale = []                    # Time range used for the time plot
-            self.plot_label = []                    # Labels of energy bands
-            self.data_label = list()                # List of labels for each band for data plotting
+            self.title = str()  # Label for the title of the plot
+            self.xlabel = str()  # Label for x axis
+            self.ylabel = str()  # Label for y axis
+            self.time_scale = []  # Time range used for the time plot
+            self.plot_label = []  # Labels of energy bands
+            self.data_label = list()  # List of labels for each band for data plotting
             self.color = ['blue', 'red', 'green', 'black', 'orange']  # Colors used to plot energy bands
 
             self.build_bkg_window()  # End of __init__, starting to build window
@@ -186,11 +174,6 @@ class BackgroundWindow:
         self.label_filename.place(relx=0.02, rely=0.25, anchor=W)
         self.text_filename = Entry(self.frame1, width=20)
         self.text_filename.place(relx=0.19, rely=0.25, relheight=0.3, relwidth=0.57, anchor=W)
-        if BackgroundWindow.fname:
-            self.text_filename.insert(0, BackgroundWindow.fname)
-            self.open_file(BackgroundWindow.fname)
-        else:
-            self.text_filename.insert(0, "No file chosen")
 
         self.btn_browse = Button(self.frame1, text='Browse ->', command=self.open_file)
         self.btn_browse.place(relx=0.78, rely=0.25, anchor=W)
@@ -243,7 +226,6 @@ class BackgroundWindow:
         self.text_max_energy = Label(self.frame3, text="Max energy")
         self.text_max_energy.place(relx=0.625, rely=0.18, anchor="center")
 
-
         # =================== 4th frame : Time Interval Selection ===================
 
         self.frame4 = Frame(self.bkg_window, relief=RAISED, borderwidth=2)
@@ -283,7 +265,7 @@ class BackgroundWindow:
                                                 command=self.time_profile_plotting)
         self.btn_time_profile_plotting.place(relx=0.3, rely=0.5, anchor="center")
 
-        self.grid_var = IntVar(value=0) 
+        self.grid_var = IntVar(value=0)
         self.grid_check = Checkbutton(
             self.frame5,
             text="Show grid",
@@ -344,7 +326,6 @@ class BackgroundWindow:
         # So if user ticks both background & data-background, background frames will remain active.
         self.backup_bkg = self.var_bkg.get() + self.var_data_bkg.get()
 
-
     def disable_times(self):
         """Allows user to set different time intervals for each band for background calculation. If the checkbutton
         "Same time interval for all bands" is ticked, disables all buttons in frame 4, except for the first band;
@@ -387,18 +368,17 @@ class BackgroundWindow:
                                         filetypes=(("FITS files", "*.fits"), ("All Files", "*.*")),
                                         title="Please Select Spectrum or Image File")
         self.text_filename.delete(0, 'end')
-        BackgroundWindow.fname = self.name
 
         if self.name:  # If file has been chosen by user
             # self.nb_bands.trace_remove("w", self.build_other_frames)  # Remove trace to avoid infinite loop
             with fits.open(self.name) as hdul:
                 self.hdul = hdul
 
-                #loading stix data
+                # loading stix data
                 data = inputWindow.InputWindow.extract_stix_data(self.hdul)
                 headers = inputWindow.InputWindow.extract_stix_header(self.hdul)
                 self.time_summarize = [data['time'][-1], headers.get('DATE_BEG', headers.get('DATE-BEG', 'Unknown')),
-                                        headers.get('DATE_END', headers.get('DATE-END', 'Unknown'))]  # time data
+                                       headers.get('DATE_END', headers.get('DATE-END', 'Unknown'))]  # time data
 
                 # Loads headers informations
                 # time_summarize = [self.hdul[2].data.time[-1], self.hdul[0].header[19],
@@ -410,12 +390,10 @@ class BackgroundWindow:
                 self.lower_bands = np.array(data['e_low'])
                 self.upper_bands = np.array(data['e_high'])
 
-                
-
             # Loading data
             hdu = fits.open(self.name)
             data1 = inputWindow.InputWindow.extract_stix_data(hdu)
-            
+
             # data1, data2, header0, header1 = self.load_data(self.name)
             # self.times = data1.time
             # self.counts = data1.counts
@@ -427,26 +405,18 @@ class BackgroundWindow:
 
             self.del_times = self.delay_times(data1['timedel'])
 
-
             start_tuple = self.find_time(self.start_date)
             end_tuple = self.find_time(self.end_date)
-
-            # print('start_date:', self.start_date)
-            # print('end_date:', self.end_date)   
-
-            # print('start_tuple:', start_tuple)
-            # print('end_tuple:', end_tuple)  
 
             # Si self.start_date est une chaîne ISO
             start_dt = datetime.datetime.strptime(self.start_date, "%Y-%m-%dT%H:%M:%S.%f")
             end_dt = datetime.datetime.strptime(self.end_date, "%Y-%m-%dT%H:%M:%S.%f")
-            
+
             start_midnight = start_dt.replace(hour=0, minute=0, second=0)
             end_midnight = end_dt.replace(hour=0, minute=0, second=0)
 
             delta_days = (end_midnight - start_midnight).days
             # print("Écart en jours entiers :", delta_days)
-
 
             self.start_time = start_tuple[0] * 3600 + start_tuple[1] * 60 + start_tuple[2]
             self.end_time = end_tuple[0] * 3600 + end_tuple[1] * 60 + end_tuple[2] + delta_days * 86400
@@ -459,7 +429,6 @@ class BackgroundWindow:
 
             # self.start_time = 0
             # self.end_time = int((self.end_datetime - self.start_datetime).total_seconds())
-
 
             self.energies = data1
 
@@ -474,8 +443,8 @@ class BackgroundWindow:
         Returns respectively a table containing datas, energies, dates and channels.\n
         Parameters: \n
             file: contains the data in a fits file."""
-        hdulist = fits.open(file)   # Reads the data
-        hdulist.info()              # Displays the content of the read file
+        hdulist = fits.open(file)  # Reads the data
+        hdulist.info()  # Displays the content of the read file
         return hdulist[2].data, hdulist[3].data, hdulist[0].header, hdulist[3].header
 
     def find_time(self, date):
@@ -496,8 +465,6 @@ class BackgroundWindow:
             return datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%f")
         except ValueError:
             return datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-
-
 
     @staticmethod
     def delay_times(data):
@@ -560,12 +527,12 @@ class BackgroundWindow:
         Dependencies: entry_int.py"""
 
         # Liste des énergies possibles, combinées, triées et filtrées
-        e_values_l = sorted(set(self.energies['e_low'])) 
-        e_values_h = sorted(set(self.energies['e_high'])) 
+        e_values_l = sorted(set(self.energies['e_low']))
+        e_values_h = sorted(set(self.energies['e_high']))
 
         # Filtrer les valeurs infinies et NaN dans e_high_values
-        e_values_h = [e for e in e_values_h 
-                if not np.isinf(e) and not np.isnan(e)] 
+        e_values_h = [e for e in e_values_h
+                      if not np.isinf(e) and not np.isnan(e)]
 
         e_low_values = [int(e) for e in e_values_l if e != 0]
         e_high_values = [int(e) for e in e_values_h]
@@ -605,7 +572,7 @@ class BackgroundWindow:
         self.btn_graphical[i].place(relx=0.59, rely=0.35 + 0.14 * i, anchor=W)
 
         self.btn_spectrogram[i] = Button(self.frame4, text="Spectrogram", state=self.state_time,
-                                       command=lambda: self.spectrogram_interval(i))
+                                         command=lambda: self.spectrogram_interval(i))
         self.btn_spectrogram[i].place(relx=0.68, rely=0.35 + 0.14 * i, anchor=W)
 
         self.method_selection[i] = OptionMenu(self.frame4, self.method_var[i], *self.method_choices)
@@ -617,49 +584,6 @@ class BackgroundWindow:
         self.btn_graphical[0].config(state=self.state_bkg)
         self.btn_spectrogram[0].config(state=self.state_bkg)
         self.method_selection[0].config(state=self.state_bkg)
-
-    # def graphical_interval(self, i):
-    #     """Calls for interval_selection.py to plot data graph. Time interval can directly be chosen on the graph.
-    #     Stores starting and ending times in two lists. Dependencies: interval_selection.py"""
-    #     self.type = self.unit_var.get()
-    #     self.add_bands()
-    #     self.get_data()
-    #     self.plot_options()
-
-    #     self.bkg_start_time[i], self.bkg_end_time[i] = \
-    #         IntervalSelector(self.times, self.data,
-    #                         #  x_scale=self.time_scale,
-    #                         x_scale= self.times_datetime,
-    #                          plot_label=self.plot_label,
-    #                          col_label=self.data_label,
-    #                          title=self.title,
-    #                          xlabel=self.xlabel,
-    #                          ylabel=self.ylabel,
-    #                          color=self.color,
-    #                          samefig=self.var_sep_times.get(),
-    #                          band=i).graphical_selection()
-        
-    #     print(f"Graphical selection raw: start={self.bkg_start_time[i]}, end={self.bkg_end_time[i]}")
-    #     print(f"Start_time ref: {self.start_time}, End_time ref: {self.end_time}")
-
-
-    #     if self.bkg_start_time[i] < min(self.times):
-    #         self.bkg_start_time[i] = min(self.times)
-    #     if self.bkg_end_time[i] > max(self.times):
-    #         self.bkg_end_time[i] = max(self.times)
-
-
-    #     self.time_min[i].delete(0, 'end')
-    #     self.time_max[i].delete(0, 'end')
-
-    #     self.time_min[i].insert(0, self.convert_time_to_date(self.bkg_start_time[i]))
-    #     self.time_max[i].insert(0, self.convert_time_to_date(self.bkg_end_time[i]))
-
-    #     print(" start selction on graph : ", self.convert_time_to_date(self.bkg_start_time[i])) 
-    #     print(" end selction on graph  : ", self.convert_time_to_date(self.bkg_end_time[i]))   
-
-    #     self.bkg_start_index[i] = self.round_value(self.times, self.bkg_start_time[i])
-    #     self.bkg_end_index[i] = self.round_value(self.times, self.bkg_end_time[i])
 
     def date_to_times_index(self, date_value):
         """
@@ -681,7 +605,7 @@ class BackgroundWindow:
         # to get the closest index in self.times
         index = (np.abs(self.times - t_estimated)).argmin()
 
-        print('index:', index, 't_estimated:', t_estimated, 'date_value:', date_value  )
+        print('index:', index, 't_estimated:', t_estimated, 'date_value:', date_value)
 
         return index
 
@@ -731,11 +655,10 @@ class BackgroundWindow:
         rel_start = t_min + fraction_start * (t_max - t_min)
         rel_end = t_min + fraction_end * (t_max - t_min)
 
-
         # # Convertir datetime → secondes relatives à start_date
         # start_dt = BackgroundWindow.parse_datetime_string(self.start_date)
         # start_ts = start_dt.timestamp()
-        
+
         # # Valeurs relatives (en secondes)
         # rel_start = (dt_start - start_dt).total_seconds()
         # rel_end = (dt_end - start_dt).total_seconds()
@@ -744,7 +667,6 @@ class BackgroundWindow:
         # print(f"Relative seconds: start={rel_start}, end={rel_end}")
         # print(f"Start_time ref: {self.start_time}, End_time ref: {self.end_time}")
 
-        
         # Clamp les valeurs dans les bornes
         rel_start = max(rel_start, min(self.times))
         rel_end = min(rel_end, max(self.times))
@@ -772,40 +694,6 @@ class BackgroundWindow:
         self.bkg_start_index[i] = self.round_value(self.times, rel_start)
         self.bkg_end_index[i] = self.round_value(self.times, rel_end)
 
-
-
-    # def convert_time_to_date(self, time):
-    #     """Converts a time in seconds to a date at format YYYY-MM-DD-HH-MM-SS. \n
-    #     Parameters: \n
-    #         time: time to convert in sec. \n
-    #     Returns: \n
-    #         date: date at format YYYY-MM-DD-HH-MM-SS."""
-    #     days = int(self.date_day[2])
-    #     hours = int(np.floor(time / 3600))
-    #     minutes = int(np.floor((time / 3600 - hours) * 60))
-    #     seconds = float(int((((time / 3600 - np.floor(time / 3600)) * 60) - minutes) * 60 * 1000) / 1000)
-
-    #     # Delaying the day if observation if made on several days
-    #     while hours < 0 or hours >= 24:
-    #         diff_days = int(np.floor(hours / 24))
-    #         hours -= diff_days * 24
-    #         days += diff_days
-
-    #     # Adding zeros to strings to have a better display
-    #     if hours < 10:
-    #         hours = '0' + str(hours)
-    #     if minutes < 10:
-    #         minutes = '0' + str(minutes)
-    #     if seconds < 10:
-    #         seconds = '0' + str(seconds)
-    #     if 100 * float(seconds) - np.floor(100 * float(seconds)) == 0:
-    #         seconds = str(seconds) + '0'
-    #         if 10 * float(seconds) - np.floor(10 * float(seconds)) == 0:
-    #             seconds = str(seconds) + '0'
-
-    #     return str(self.date_day[0]) + '-' + str(self.date_day[1]) + '-' + str(days) + 'T' + str(hours) + ':' + \
-    #         str(minutes) + ':' + str(seconds)
-
     def convert_time_to_date(self, t):
         """
         Convertit une valeur t (dans le référentiel self.times) en datetime réel,
@@ -832,15 +720,6 @@ class BackgroundWindow:
         new_datetime = start_datetime + datetime.timedelta(seconds=delta_seconds)
         return new_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
 
-
-
-    # def convert_time_to_date(self, seconds):
-    #     """Ajoute un nombre de secondes à la date de début complète"""
-    #     dt = self.start_datetime + datetime.timedelta(seconds=seconds)
-    #     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]  # ou sans ms si inutile
-
-
-
     def add_bands(self):
         """Gets the values of plot limits from user choice.
         energy_min and energy_max are the Entry boxes for min and max energy bands defined in open_value."""
@@ -854,44 +733,6 @@ class BackgroundWindow:
             if self.energy_max_var[i].get() != '':
                 self.round_value(self.upper_bands, int(self.energy_max_list[i].get()))
                 self.energies_high.append(int(self.energy_max_list[i].get()))
-
-    # =================== Plotting ===================
-
-    # def round_value(self, liste, value):
-    #     """Searches for the nearest number from the list. \n
-    #     Parameters: \n
-    #         liste: list where researched values are stored; \n
-    #         value: number wanted to be rounded, to match one of the given list. \n
-    #     Returns: \n
-    #         index: index in the list of where the value has been found."""
-    #     index = 0
-    #     near = np.abs(value - liste[0])
-    #     self.rounded = int(value)
-    #     for i in range(len(liste)):
-    #         diff = np.abs(value - liste[i])
-    #         if near > diff:
-    #             near = diff
-    #             index = i
-    #             self.rounded = int(liste[i])
-    #     return index
-
-    # def round_value(self, liste, value):
-    #     liste = np.array(liste, dtype=np.float64)  # Cast en float64 pour éviter Overflow
-
-    #     if value < 0:
-    #         print(f"[WARNING] round_value(): valeur négative {value}, mise à 0")
-    #         value = 0
-
-    #     index = 0
-    #     near = np.abs(value - liste[0])
-    #     self.rounded = int(value)
-    #     for i in range(len(liste)):
-    #         diff = np.abs(value - liste[i])
-    #         if near > diff:
-    #             near = diff
-    #             index = i
-    #             self.rounded = int(liste[i])
-    #     return index
 
     def round_value(self, liste, value):
         """Trouve la valeur la plus proche de 'value' dans la liste 'liste'."""
@@ -914,8 +755,6 @@ class BackgroundWindow:
                 continue
 
         return index
-
-
 
     def get_data(self):
         """Defines the Rate, Counts, and Flux for "Plot Time Profile"."""
@@ -961,7 +800,7 @@ class BackgroundWindow:
         print('self.data values:', self.data)
         print('self.times shape:', self.times.shape)
         print('self.times values:', self.times)
-        print('self.counts shape:', self.counts.shape )
+        print('self.counts shape:', self.counts.shape)
         print('self.counts values:', self.counts)
 
     def get_bkg(self):
@@ -1039,109 +878,6 @@ class BackgroundWindow:
         # Store the background result
         BackgroundWindow.DATA_BKG_RESULT = self.data_bkg
 
-    # def plot_options(self):
-    #     """Saves using matplotlib all options to plot the graph to later display it. \n
-    #     Dependencies: time_profile_plotting"""
-    #     # Absciss legend plot
-    #     file_duration = max(self.times) - min(self.times)
-    #     if file_duration <= 1800:  # file duration less than 30 minutes
-    #         step_x = 120
-    #     elif file_duration <= 3600:  # file duration less than 1 hour
-    #         step_x = 480
-    #     elif file_duration <= 28800:  # file duration less than 8 hours
-    #         step_x = 3600
-    #     else:  # file duration more than 8 hours
-    #         step_x = 7200
-
-    #     self.time_scale = np.arange(0, file_duration, step_x)
-    #     x_labels_plot = list(
-    #         map(lambda x: (str(datetime.timedelta(seconds=float(x)))).split('.')[0][:-3], self.time_scale +
-    #             self.start_time))
-
-    #     self.plot_label = []
-    #     for i in range(len(x_labels_plot)):
-    #         if 'day' in x_labels_plot[i]:
-    #             self.plot_label.append((x_labels_plot[i].split(','))[1])
-    #         else:
-    #             self.plot_label.append(x_labels_plot[i])
-
-    #     self.xlabel = 'Start time: ' + str(self.start_date) + ' -- End time : ' + str(self.end_date)
-
-    #     # Unit plotting
-    #     if self.type == "Rate":
-    #         self.ylabel = 'Rate (Counts/s) by Bands'
-    #         self.title = 'Time Profile Plotting Rate (Counts/s)'
-
-    #     elif self.type == "Counts":
-    #         self.ylabel = 'Counts by Bands'
-    #         self.title = 'Time Profile Plotting Counts'
-
-    #     elif self.type == "Flux":
-    #         self.ylabel = 'Flux by Bands'
-    #         self.title = 'Time Profile Plotting Flux'
-
-    #     else:
-    #         print("No matching unit plotting type found")
-
-    #     # Labeling energy bands on the plot
-    #     self.data_label = []
-    #     for data_type in ['Original data', 'Background', 'Corrected data']:
-    #         label = [data_type + ' for ' + str(low) + '-' + str(high) + 'keV' for low, high in
-    #                  zip(self.energies_low, self.energies_high)]
-    #         label.append('Times')
-    #         self.data_label.append(label)
-
-    # def plot_options(self):
-    #     """Génère 10 labels temporels bien répartis sur l’axe X, proportionnels à self.times et aux dates réelles."""
-        
-    #     from datetime import timedelta
-
-    #     n_ticks = 10
-    #     t_min = min(self.times)
-    #     t_max = max(self.times)
-    #     self.time_scale = np.linspace(t_min, t_max, n_ticks, endpoint=True).astype(int)
-    #     print(f"time_scale: {self.time_scale}")
-
-    #     # Datetimes réels de début et de fin
-    #     start_datetime = BackgroundWindow.parse_datetime_string(self.start_date)
-    #     end_datetime = BackgroundWindow.parse_datetime_string(self.end_date)
-    #     total_seconds = (end_datetime - start_datetime).total_seconds()
-
-    #     self.plot_label = []
-    #     for t in self.time_scale:
-    #         fraction = (t - t_min) / (t_max - t_min)
-    #         dt_offset = fraction * total_seconds
-    #         label_time = start_datetime + timedelta(seconds=int(dt_offset))
-
-    #         # Format des labels
-    #         label = label_time.strftime('%H:%M') if total_seconds <= 86400 else label_time.strftime('%m-%d\n%H:%M')
-    #         print(f"Label for time {t} (fraction={fraction:.2f}): {label}")
-    #         self.plot_label.append(label)
-
-    #     self.xlabel = f'Start time: {self.start_date} -- End time: {self.end_date}'
-
-    #     # Unité Y et titre
-    #     self.type = self.unit_var.get()
-    #     if self.type == "Rate":
-    #         self.ylabel = 'Rate (Counts/s) by Bands'
-    #         self.title = 'Time Profile Plotting Rate (Counts/s)'
-    #     elif self.type == "Counts":
-    #         self.ylabel = 'Counts by Bands'
-    #         self.title = 'Time Profile Plotting Counts'
-    #     elif self.type == "Flux":
-    #         self.ylabel = 'Flux by Bands'
-    #         self.title = 'Time Profile Plotting Flux'
-    #     else:
-    #         print("No matching unit plotting type found")
-
-    #     # Légendes
-    #     self.data_label = []
-    #     for data_type in ['Original data', 'Background', 'Corrected data']:
-    #         label = [f'{data_type} for {low}-{high} keV'
-    #                 for low, high in zip(self.energies_low, self.energies_high)]
-    #         label.append('Times')
-    #         self.data_label.append(label)
-
     def plot_options(self):
         """Génère des labels temporels à intervalles dynamiques pour l’axe X basé sur self.times."""
         from datetime import timedelta
@@ -1152,26 +888,26 @@ class BackgroundWindow:
         total_seconds = (end_datetime - start_datetime).total_seconds()
 
         # Déterminer un pas dynamique
-        if total_seconds <= 1800:             # ≤ 30 min
-            interval_sec = 120                # 2 min
-        elif total_seconds <= 3600:           # ≤ 1h
-            interval_sec = 480                # 8 min
-        elif total_seconds <= 10800:          # ≤ 3h
-            interval_sec = 1200               # 20 min
-        elif total_seconds <= 28800:          # ≤ 8h
-            interval_sec = 1800               # 30 min
-        elif total_seconds <= 43200:          # ≤ 12h
-            interval_sec = 3600               # 1h
-        elif total_seconds <= 86400:          # ≤ 24h
-            interval_sec = 7200               # 2h
-        elif total_seconds <= 2*86400:        # ≤ 2 jours
-            interval_sec = 10800              # 3h
-        elif total_seconds <= 5*86400:        # ≤ 5 jours
-            interval_sec = 21600              # 6h
-        elif total_seconds <= 10*86400:       # ≤ 10 jours
-            interval_sec = 43200              # 12h
-        else:                                 # > 10 jours
-            interval_sec = 86400              # 1 jour
+        if total_seconds <= 1800:  # ≤ 30 min
+            interval_sec = 120  # 2 min
+        elif total_seconds <= 3600:  # ≤ 1h
+            interval_sec = 480  # 8 min
+        elif total_seconds <= 10800:  # ≤ 3h
+            interval_sec = 1200  # 20 min
+        elif total_seconds <= 28800:  # ≤ 8h
+            interval_sec = 1800  # 30 min
+        elif total_seconds <= 43200:  # ≤ 12h
+            interval_sec = 3600  # 1h
+        elif total_seconds <= 86400:  # ≤ 24h
+            interval_sec = 7200  # 2h
+        elif total_seconds <= 2 * 86400:  # ≤ 2 jours
+            interval_sec = 10800  # 3h
+        elif total_seconds <= 5 * 86400:  # ≤ 5 jours
+            interval_sec = 21600  # 6h
+        elif total_seconds <= 10 * 86400:  # ≤ 10 jours
+            interval_sec = 43200  # 12h
+        else:  # > 10 jours
+            interval_sec = 86400  # 1 jour
 
         # Générer les ticks réguliers
         tick_datetimes = []
@@ -1220,102 +956,9 @@ class BackgroundWindow:
         self.data_label = []
         for data_type in ['Original data', 'Background', 'Corrected data']:
             label = [f'{data_type} for {low}-{high} keV'
-                    for low, high in zip(self.energies_low, self.energies_high)]
+                     for low, high in zip(self.energies_low, self.energies_high)]
             label.append('Times')
             self.data_label.append(label)
-
-
-    # def time_profile_plotting(self):
-    #     """Calls for all previous functions to get all data needed, then show the plot.
-    #     Dependencies: get_data, get_bkg, get_data_bkg, plot_options"""
-    #     plt.close()
-    #     self.add_bands()
-    #     self.type = self.unit_var.get()
-    #     self.get_data()
-    #     plt.figure()
-    #     self.plot_options()
-
-
-    #     from matplotlib.dates import AutoDateLocator, AutoDateFormatter, DateFormatter
-    #     from datetime import datetime, timedelta
-
-    #     start_datetime = BackgroundWindow.parse_datetime_string(self.start_date)
-    #     end_datetime = BackgroundWindow.parse_datetime_string(self.end_date)
-    #     t_min = min(self.times)
-    #     t_max = max(self.times)
-    #     total_seconds = (end_datetime - start_datetime).total_seconds()
-
-    #     # Conversion de self.times → datetimes proportionnels
-    #     self.times_datetime = [
-    #         start_datetime + timedelta(seconds=(t - t_min) / (t_max - t_min) * total_seconds)
-    #         for t in self.times
-    #     ]
-
-    #     print(f"Converted times to datetimes: {self.times_datetime}")
-
-
-
-    #     # Plotting data
-    #     if self.var_error.get():
-    #         yerr = self.data_err
-    #     else:
-    #         yerr = np.zeros(np.shape(self.data_err))
-
-    #     if self.var_og_data.get():
-    #         df = pd.DataFrame(self.data, index=self.times_datetime, columns=self.data_label[0])
-    #         for band in range(len(self.energies_low)):
-    #             df.plot(x='Times', y=self.data_label[0][band], yerr=yerr[:, band], color=self.color[band],
-    #                     ax=plt.gca(), linewidth=0.25)
-
-    #     if self.var_bkg.get() or self.var_data_bkg.get():
-    #         self.get_bkg()
-
-    #         if self.var_bkg.get():
-    #             df = pd.DataFrame(self.bkg, index=self.times_datetime, columns=self.data_label[1])
-    #             for band in range(len(self.energies_low)):
-    #                 df.plot(x='Times', y=self.data_label[1][band], color=self.color[band],
-    #                         ax=plt.gca(), linewidth=0.1)
-
-    #         if self.var_data_bkg.get():
-    #             self.get_data_bkg()
-    #             df = pd.DataFrame(self.data_bkg, index=self.times_datetime, columns=self.data_label[2])
-    #             for band in range(len(self.energies_low)):
-    #                 df.plot(x='Times', y=self.data_label[2][band], yerr=yerr[:, band], color=self.color[band],
-    #                         ax=plt.gca(), linewidth=1)
-
-    #     if self.grid_var.get():
-    #         # show grid if checkbox is checked
-    #         plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.8)
-    #         plt.minorticks_on()
-    #         plt.grid(True, which='minor', linestyle=':', linewidth=0.5, alpha=0.5)
-    #     else:
-    #         plt.grid(False)
-
-    #     # plt.xticks(self.time_scale, self.plot_label)
-    #     plt.xlabel(self.xlabel)
-    #     plt.ylabel(self.ylabel)
-    #     plt.title(self.title)
-
-
-    #     # Mise en place des ticks dynamiques
-    #     ax = plt.gca()
-    #     locator = AutoDateLocator()
-    #     formatter = DateFormatter('%H:%M')
-    #     ax.xaxis.set_major_locator(locator)
-    #     ax.xaxis.set_major_formatter(formatter)
-
-    #     # Mise à jour sur zoom
-    #     def update_xticks_on_zoom(event):
-    #         ax = event.canvas.figure.axes[0]
-    #         ax.xaxis.set_major_locator(locator)
-    #         ax.xaxis.set_major_formatter(formatter)
-    #         event.canvas.draw_idle()
-
-    #     plt.gcf().canvas.mpl_connect('draw_event', update_xticks_on_zoom)
-    #     plt.gcf().autofmt_xdate()
-
-    #     plt.show()
-
 
     def time_profile_plotting(self):
         """Trace le profil temporel avec échelle dynamique des ticks temporels en fonction du zoom."""
@@ -1392,7 +1035,7 @@ class BackgroundWindow:
 
         # Axe X dynamique
         ax = plt.gca()
-        ax.set_xlim(self.times_datetime[0], self.times_datetime[-1]) # ADJUSTE LIMITE X
+        ax.set_xlim(self.times_datetime[0], self.times_datetime[-1])  # ADJUSTE LIMITE X
 
         # ax.grid(False, which='major')  # principal grid
 
@@ -1400,7 +1043,6 @@ class BackgroundWindow:
         # ax.grid(True, which='minor', linestyle=':', linewidth=0.1, alpha=0.1)
 
         # plt.draw()
-
 
         locator = AutoDateLocator()
         # locator = MinuteLocator(interval=10)
@@ -1420,22 +1062,6 @@ class BackgroundWindow:
 
         plt.show()
 
-
-    # def spectrogram_interval(self, i):
-    #     """Open spectrogram plot with graphical selection for background definition."""
-    #     import plotting
-    #     import second
-
-    #     # Create plotting instance using selected FITS file
-    #     plot_instance = plotting.Plotting(second.InputWindow.fname)
-
-    #     # Call the spectrogram plotting
-    #     plot_instance._Input__plot_spectrogram('rate')  # Or 'counts' or 'flux'
-
-    #     # ⚠️ OPTIONAL : Here you could add your custom RectangleSelector to define the interval
-    #     # For example, if you want to store selection in self.time_min[i] / self.time_max[i]
-    #     # But this part depends on how your plotting.py supports graphical selection
-
     def spectrogram_interval(self, i):
         """Open spectrogram plot with graphical selection for background definition, bypassing the popup."""
         from .graphics import plotting
@@ -1444,16 +1070,11 @@ class BackgroundWindow:
         from matplotlib.widgets import SpanSelector
         import numpy as np
 
-        # Create plotting instance using selected FITS file
-        current_fname = BackgroundWindow.fname if BackgroundWindow.fname else inputWindow.InputWindow.fname
-        print('fname:', BackgroundWindow.fname)
-
         hdu = fits.open(self.name)  # Opening the file
         data = inputWindow.InputWindow.extract_stix_data(hdu)  # Extracting data from the file
         headers = inputWindow.InputWindow.extract_stix_header(hdu)  # Extracting header from the file
 
         plot_instance = plotting.Plotting(data=data, headers=headers)
-
 
         # ✅ Monkey-patch specgm_lim to avoid popup!
         def no_popup_specgm_lim():
@@ -1467,7 +1088,6 @@ class BackgroundWindow:
                 plot_instance.energy_min = np.min(lower_clean)
                 plot_instance.energy_max = np.max(upper_clean)
                 print(f"[NO POPUP] Energy bounds set to: {plot_instance.energy_min} - {plot_instance.energy_max}")
-
 
         plot_instance.specgm_lim = no_popup_specgm_lim
 
@@ -1484,7 +1104,7 @@ class BackgroundWindow:
             dt_start = mdates.num2date(xmin)
             dt_end = mdates.num2date(xmax)
             dt_start = dt_start.replace(tzinfo=None)  # Remove timezone info if present
-            dt_end = dt_end.replace(tzinfo=None) 
+            dt_end = dt_end.replace(tzinfo=None)
             print(f"Selected region (datetime): {dt_start} - {dt_end}")
 
             BackgroundWindow.DATA_BKG_SELECTED = True

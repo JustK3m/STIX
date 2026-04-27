@@ -40,32 +40,6 @@ class Fitting:
         Valeurs initiales par défaut {nom_modele: {param: valeur}}.
     """
 
-    fname_r = 'data/solo_L1_stix-sci-xray' \
-              '-spec_20230319T175504-20230320T000014_V02_2303197888-65462.fits'
-    rname_r = 'data/stx_srm_2303197888.fits'
-
-    def resource_path(relative_path):
-        """
-        Résout le chemin absolu d'un fichier de ressource, compatible avec
-        un exécutable PyInstaller (frozen) et un environnement Python standard.
-
-        Parameters
-        ----------
-        relative_path : str
-            Chemin relatif du fichier.
-
-        Returns
-        -------
-        str
-            Chemin absolu utilisable dans les deux contextes d'exécution.
-        """
-        if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, relative_path)
-        return os.path.join(relative_path)
-
-    fname = resource_path(fname_r)
-    rname = resource_path(rname_r)
-
     # ── Bornes par défaut ──────────────────────────────────────
     default_param_bounds = {
         "PowerLaw1D": {"amplitude": (None, None), "alpha": (None, None)},
@@ -113,9 +87,6 @@ class Fitting:
         (listbox des modèles, champs de fichier, menus d'énergie, boutons)
         ainsi que les attributs d'état internes.
 
-        Charge automatiquement les fichiers par défaut (fname, rname) si
-        définis, et initialise les menus d'énergie en conséquence.
-
         Parameters
         ----------
         root : tk.Tk or tk.Toplevel
@@ -151,8 +122,8 @@ class Fitting:
         self.top2.title('SPEX Fit Options')  # title of the window
         self.top2.geometry("1000x600")  # size of the new window
 
-        self.name = None  # Name of the .fits file imported
-        self.name2 = None  # # Name of the .fits file imported (response matrix)
+        self.fname = None  # Name of the .fits file imported
+        self.rname = None  # # Name of the .fits file imported (response matrix)
 
         self.counts = None  # Matrix contaning the counts per band in function of time time
         self.counts_err = None  # Matrix contaning the error of the counts per band in function of time
@@ -188,11 +159,8 @@ class Fitting:
         Label(self.top2, text="Spectrum: ").place(relx=0.65, rely=0.2, anchor=W)
         self.text_filename = Entry(self.top2, width=30)
         self.text_filename.place(relx=0.72, rely=0.2, anchor=W)
-        if Fitting.fname:
-            self.text_filename.insert(0, Fitting.fname)
-            self.open_file(Fitting.fname)
-        else:
-            self.text_filename.insert(0, "No file chosen")
+
+        self.text_filename.insert(0, "No file chosen")
 
         Button(self.top2, text='Browse ->', command=self.open_file).place(relx=0.92, rely=0.2, anchor=W)
 
@@ -200,11 +168,7 @@ class Fitting:
         Label(self.top2, text="Response: ").place(relx=0.65, rely=0.25, anchor=W)
         self.text_filename2 = Entry(self.top2, width=30)
         self.text_filename2.place(relx=0.72, rely=0.25, anchor=W)
-        if Fitting.rname:
-            self.text_filename2.insert(0, Fitting.rname)
-            self.open_srm_file(Fitting.rname)
-        else:
-            self.text_filename2.insert(0, "No file chosen")
+        self.text_filename2.insert(0, "No file chosen")
 
         Button(self.top2, text='Browse ->', command=self.open_srm_file).place(relx=0.92, rely=0.25, anchor=W)
 
@@ -212,143 +176,10 @@ class Fitting:
         self.user_param_values = {}  # initial values set by user in Set_Function
         self.user_param_modified = {}  # True if user modified bounds/values from default
 
-        def Set_Function():
-            try:
-                model_key = self.lbox.get(self.lbox.curselection()[0])
-            except Exception:
-                messagebox.showwarning("No Model Selected",
-                                       "Please select a model first.")
-                return
-
-            newwin = Toplevel(self.top2)
-            newwin.title(f"{model_key} - Parameter Settings")
-            newwin.geometry("680x480")
-            newwin.configure(bg="#f7f9fc")
-
-            Label(newwin, text=f"Set parameter values for {model_key}",
-                  fg="#1e3a8a", bg="#f7f9fc",
-                  font=("Helvetica", 13, "bold")).pack(pady=15)
-
-            base_defaults = Fitting.default_param_values.get(model_key, {})
-            base_bounds = Fitting.default_param_bounds.get(model_key, {})
-            saved_values = self.user_param_values.get(model_key, {})
-            saved_bounds = self.user_param_bounds.get(model_key, {})
-
-            # Paramètres sans min/max (valeur seule)
-            VALUE_ONLY_PARAMS = {"E_pivot", "E_cut", "Ec_min", "Ec_max"}
-            VALUE_ONLY_MODELS = {
-                "PowerLaw1D", "V_TH + PowerLaw", "PowerLawCutoffFix",
-                "PowerLawCutoffFree", "V_TH x PowerLawCutoffFix", "V_TH x PowerLawCutoffFree",
-            }
-
-            form_frame = Frame(newwin, bg="#f7f9fc")
-            form_frame.pack(pady=10, padx=20, fill="x")
-
-            param_entries = {}
-            initial_display = {}
-
-            for param, default_val in base_defaults.items():
-                disp_default = str(saved_values.get(param, default_val))
-                pmin, pmax = saved_bounds.get(param, base_bounds.get(param, (None, None)))
-                disp_min = "" if pmin is None else str(pmin)
-                disp_max = "" if pmax is None else str(pmax)
-
-                row = Frame(form_frame, bg="#f7f9fc")
-                row.pack(pady=6, fill="x")
-                Label(row, text=f"{param}:", width=14, anchor="w",
-                      bg="#f7f9fc").pack(side="left")
-
-                # Cas value-only
-                if model_key in VALUE_ONLY_MODELS and param in VALUE_ONLY_PARAMS:
-                    Label(row, text="Value:", bg="#f7f9fc").pack(side="left")
-                    e_def = Entry(row, width=10)
-                    e_def.insert(0, disp_default)
-                    e_def.pack(side="left", padx=6)
-                    param_entries[param] = (e_def, None, None)
-                    initial_display[param] = (disp_default, "", "")
-                    continue
-
-                # Cas normal : Default + Min + Max
-                for label_txt, width in [("Default:", 10), ("Min:", 10), ("Max:", 10)]:
-                    Label(row, text=label_txt, bg="#f7f9fc").pack(side="left")
-                    e = Entry(row, width=width)
-                    e.pack(side="left", padx=6)
-
-                # Récupérer les entries créées (les 3 dernières dans row)
-                entries_in_row = [w for w in row.winfo_children()
-                                  if isinstance(w, Entry)]
-                e_def, e_min, e_max = entries_in_row
-                e_def.insert(0, disp_default)
-                e_min.insert(0, disp_min)
-                e_max.insert(0, disp_max)
-
-                param_entries[param] = (e_def, e_min, e_max)
-                initial_display[param] = (disp_default, disp_min, disp_max)
-
-            # ── Actions ───────────────────────────────────────────
-            def save_params():
-                values, bounds = {}, {}
-                modified = False
-                for param, (e_def, e_min, e_max) in param_entries.items():
-                    def_txt = e_def.get().strip()
-                    try:
-                        values[param] = float(def_txt)
-                    except ValueError:
-                        messagebox.showerror("Invalid input",
-                                             f"{param}: invalid value")
-                        return
-
-                    if e_min is None:  # value-only
-                        bounds[param] = (None, None)
-                        if def_txt != initial_display[param][0]:
-                            modified = True
-                        continue
-
-                    min_txt = e_min.get().strip()
-                    max_txt = e_max.get().strip()
-                    lo = float(min_txt) if min_txt else None
-                    hi = float(max_txt) if max_txt else None
-                    if lo is not None and hi is not None and hi <= lo:
-                        messagebox.showerror("Invalid bounds",
-                                             f"{param}: max must be > min")
-                        return
-                    bounds[param] = (lo, hi)
-                    if (def_txt, min_txt, max_txt) != initial_display[param]:
-                        modified = True
-
-                self.user_param_values[model_key] = values
-                self.user_param_bounds[model_key] = bounds
-                self.user_param_modified[model_key] = modified
-                print(f"[Set_Function] {model_key} saved: values={values}, "
-                      f"bounds={bounds}, modified={modified}")
-                newwin.destroy()
-
-            def reset_defaults():
-                for param, (e_def, e_min, e_max) in param_entries.items():
-                    e_def.delete(0, END)
-                    e_def.insert(0, str(base_defaults[param]))
-                    if e_min is not None:
-                        lo, hi = base_bounds.get(param, (None, None))
-                        e_min.delete(0, END);
-                        e_min.insert(0, "" if lo is None else str(lo))
-                        e_max.delete(0, END);
-                        e_max.insert(0, "" if hi is None else str(hi))
-
-            # ── Boutons ───────────────────────────────────────────
-            btn_frame = Frame(newwin, bg="#f7f9fc")
-            btn_frame.pack(pady=20)
-            for text, cmd, color in [
-                ("Save", save_params, "#16a34a"),
-                ("Reset to Defaults", reset_defaults, "#f97316"),
-                ("Cancel", newwin.destroy, "#ef4444"),
-            ]:
-                Button(btn_frame, text=text, command=cmd,
-                       bg=color, fg="white", width=14).pack(side="left", padx=10)
-
         Label(self.top2, text="Set function components: ").place(relx=0.65, rely=0.30)
 
-        Button(self.top2, text="Function value(s)", command=Set_Function).place(relx=0.65, rely=0.35, relheight=0.05,
-                                                                                relwidth=0.13)
+        Button(self.top2, text="Function value(s)", command=self.Set_Function).place(relx=0.65, rely=0.35, relheight=0.05,
+                                                                                     relwidth=0.13)
 
         self.statname = "Chi2"
 
@@ -372,32 +203,14 @@ class Fitting:
 
         # Energies range(s) to fit
 
-        if Fitting.fname and Fitting.rname:
+        Label(self.top2, text="Min energy").place(relx=0.75, rely=0.45, anchor=N)
+        Label(self.top2, text="Max energy").place(relx=0.85, rely=0.45, anchor=N)
 
-            usable = np.arange(min(self.matrix.shape[1], len(self.e_low_det)))
-            e_low_det = self.e_low_det[usable]
-            e_high_det = self.e_high_det[usable]
+        self.energy_min2 = OptionMenu(self.top2, self.energy_min_var, [0])
+        self.energy_max2 = OptionMenu(self.top2, self.energy_max_var, [0])
 
-            e_low_values_int = sorted({int(e) for e in e_low_det if e != 0})
-            e_high_values_int = sorted({int(e) for e in e_high_det
-                                        if e not in (float('inf'), float('-inf'))})
-
-            self.energy_min_var.set(min(e_low_values_int))
-            self.energy_max_var.set(max(e_high_values_int))
-
-            Label(self.top2, text="Min energy").place(relx=0.75, rely=0.45, anchor=N)
-            Label(self.top2, text="Max energy").place(relx=0.85, rely=0.45, anchor=N)
-
-            self.energy_min2 = OptionMenu(self.top2, self.energy_min_var,
-                                          *e_low_values_int)
-            self.energy_max2 = OptionMenu(self.top2, self.energy_max_var,
-                                          *e_high_values_int)
-            self.energy_min2.place(relx=0.75, rely=0.50, anchor=N)
-            self.energy_max2.place(relx=0.85, rely=0.50, anchor=N)
-        else:
-            # Placeholder pour update_energy_range
-            self.energy_min2 = OptionMenu(self.top2, self.energy_min_var, 0)
-            self.energy_max2 = OptionMenu(self.top2, self.energy_max_var, 0)
+        self.energy_min2.place(relx=0.75, rely=0.50, anchor=N)
+        self.energy_max2.place(relx=0.85, rely=0.50, anchor=N)
 
         # ============== Main window description ==============
         """ 
@@ -571,13 +384,146 @@ class Fitting:
         if background.BackgroundWindow.DATA_BKG_SELECTED:
             self.show_db_var.set(1)  # Set the checkbox to checked if background data is selected
 
+    def Set_Function(self):
+        try:
+            model_key = self.lbox.get(self.lbox.curselection()[0])
+        except Exception:
+            messagebox.showwarning("No Model Selected",
+                                   "Please select a model first.")
+            return
+
+        newwin = Toplevel(self.top2)
+        newwin.title(f"{model_key} - Parameter Settings")
+        newwin.geometry("680x480")
+        newwin.configure(bg="#f7f9fc")
+
+        Label(newwin, text=f"Set parameter values for {model_key}",
+              fg="#1e3a8a", bg="#f7f9fc",
+              font=("Helvetica", 13, "bold")).pack(pady=15)
+
+        base_defaults = Fitting.default_param_values.get(model_key, {})
+        base_bounds = Fitting.default_param_bounds.get(model_key, {})
+        saved_values = self.user_param_values.get(model_key, {})
+        saved_bounds = self.user_param_bounds.get(model_key, {})
+
+        # Paramètres sans min/max (valeur seule)
+        VALUE_ONLY_PARAMS = {"E_pivot", "E_cut", "Ec_min", "Ec_max"}
+        VALUE_ONLY_MODELS = {
+            "PowerLaw1D", "V_TH + PowerLaw", "PowerLawCutoffFix",
+            "PowerLawCutoffFree", "V_TH x PowerLawCutoffFix", "V_TH x PowerLawCutoffFree",
+        }
+
+        form_frame = Frame(newwin, bg="#f7f9fc")
+        form_frame.pack(pady=10, padx=20, fill="x")
+
+        param_entries = {}
+        initial_display = {}
+
+        for param, default_val in base_defaults.items():
+            disp_default = str(saved_values.get(param, default_val))
+            pmin, pmax = saved_bounds.get(param, base_bounds.get(param, (None, None)))
+            disp_min = "" if pmin is None else str(pmin)
+            disp_max = "" if pmax is None else str(pmax)
+
+            row = Frame(form_frame, bg="#f7f9fc")
+            row.pack(pady=6, fill="x")
+            Label(row, text=f"{param}:", width=14, anchor="w",
+                  bg="#f7f9fc").pack(side="left")
+
+            # Cas value-only
+            if model_key in VALUE_ONLY_MODELS and param in VALUE_ONLY_PARAMS:
+                Label(row, text="Value:", bg="#f7f9fc").pack(side="left")
+                e_def = Entry(row, width=10)
+                e_def.insert(0, disp_default)
+                e_def.pack(side="left", padx=6)
+                param_entries[param] = (e_def, None, None)
+                initial_display[param] = (disp_default, "", "")
+                continue
+
+            # Cas normal : Default + Min + Max
+            for label_txt, width in [("Default:", 10), ("Min:", 10), ("Max:", 10)]:
+                Label(row, text=label_txt, bg="#f7f9fc").pack(side="left")
+                e = Entry(row, width=width)
+                e.pack(side="left", padx=6)
+
+            # Récupérer les entries créées (les 3 dernières dans row)
+            entries_in_row = [w for w in row.winfo_children()
+                              if isinstance(w, Entry)]
+            e_def, e_min, e_max = entries_in_row
+            e_def.insert(0, disp_default)
+            e_min.insert(0, disp_min)
+            e_max.insert(0, disp_max)
+
+            param_entries[param] = (e_def, e_min, e_max)
+            initial_display[param] = (disp_default, disp_min, disp_max)
+
+        # ── Actions ───────────────────────────────────────────
+        def save_params():
+            values, bounds = {}, {}
+            modified = False
+            for param, (e_def, e_min, e_max) in param_entries.items():
+                def_txt = e_def.get().strip()
+                try:
+                    values[param] = float(def_txt)
+                except ValueError:
+                    messagebox.showerror("Invalid input",
+                                         f"{param}: invalid value")
+                    return
+
+                if e_min is None:  # value-only
+                    bounds[param] = (None, None)
+                    if def_txt != initial_display[param][0]:
+                        modified = True
+                    continue
+
+                min_txt = e_min.get().strip()
+                max_txt = e_max.get().strip()
+                lo = float(min_txt) if min_txt else None
+                hi = float(max_txt) if max_txt else None
+                if lo is not None and hi is not None and hi <= lo:
+                    messagebox.showerror("Invalid bounds",
+                                         f"{param}: max must be > min")
+                    return
+                bounds[param] = (lo, hi)
+                if (def_txt, min_txt, max_txt) != initial_display[param]:
+                    modified = True
+
+            self.user_param_values[model_key] = values
+            self.user_param_bounds[model_key] = bounds
+            self.user_param_modified[model_key] = modified
+            print(f"[Set_Function] {model_key} saved: values={values}, "
+                  f"bounds={bounds}, modified={modified}")
+            newwin.destroy()
+
+        def reset_defaults():
+            for param, (e_def, e_min, e_max) in param_entries.items():
+                e_def.delete(0, END)
+                e_def.insert(0, str(base_defaults[param]))
+                if e_min is not None:
+                    lo, hi = base_bounds.get(param, (None, None))
+                    e_min.delete(0, END);
+                    e_min.insert(0, "" if lo is None else str(lo))
+                    e_max.delete(0, END);
+                    e_max.insert(0, "" if hi is None else str(hi))
+
+        # ── Boutons ───────────────────────────────────────────
+        btn_frame = Frame(newwin, bg="#f7f9fc")
+        btn_frame.pack(pady=20)
+        for text, cmd, color in [
+            ("Save", save_params, "#16a34a"),
+            ("Reset to Defaults", reset_defaults, "#f97316"),
+            ("Cancel", newwin.destroy, "#ef4444"),
+        ]:
+            Button(btn_frame, text=text, command=cmd,
+                   bg=color, fg="white", width=14).pack(side="left", padx=10)
+
     def open_file(self, file=None):
         """
         Ouvre et lit un fichier FITS de spectre STIX. Si un chemin est
         fourni, le charge directement ; sinon ouvre une boîte de dialogue.
 
         Met à jour : self.times, self.counts, self.counts_err,
-        self.e_low_det, self.e_high_det, self.time_del, Fitting.fname.
+        self.e_low_det, self.e_high_det, self.time_del, self.fname.
         Appelle self.update_energy_range() après chargement.
 
         Parameters
@@ -591,18 +537,17 @@ class Fitting:
         None
         """
         if file:
-            self.name = file
+            self.fname = file
         else:
-            self.name = askopenfilename(initialdir=".",
+            self.fname = askopenfilename(initialdir=".",
                                         filetypes=(("FITS files", "*.fits"), ("All Files", "*.*")),
                                         title="Please Select Spectrum or Image File")
         self.text_filename.delete(0, 'end')
-        Fitting.fname = self.name
 
-        if self.name:
-            self.text_filename.insert(0, self.name)  # Displays the input file name in Entry box
+        if self.fname:
+            self.text_filename.insert(0, self.fname)  # Displays the input file name in Entry box
             # Loading data
-            data1 = self.load_data(self.name)
+            data1 = self.load_data(self.fname)
             self.times = data1['time']
             self.counts = data1['counts']
             self.counts_err = data1['counts_err']
@@ -626,22 +571,39 @@ class Fitting:
         None
         """
         if file:
-            self.name2 = file
+            self.rname = file
         else:
-            self.name2 = askopenfilename(initialdir=".",
+            self.rname = askopenfilename(initialdir=".",
                                          filetypes=(("FITS files", "*.fits"), ("All Files", "*.*")),
                                          title="Please Select Spectrum or Image File")
         self.text_filename2.delete(0, 'end')
-        Fitting.rname = self.name2
 
-        if self.name2:
-            self.text_filename2.insert(0, self.name2)  # Displays the input file name in Entry box
+        if self.rname:
+            self.text_filename2.insert(0, self.rname)  # Displays the input file name in Entry box
             # Loading data
-            data = self.load_srm_data(self.name2)
+            data = self.load_srm_data(self.rname)
             self.e_low_true = data['ENERG_LO']
             self.e_high_true = data['ENERG_HI']
             self.matrix = data['MATRIX']
             self.update_energy_range()
+
+            usable = np.arange(min(self.matrix.shape[1], len(self.e_low_det)))
+            e_low_det = self.e_low_det[usable]
+            e_high_det = self.e_high_det[usable]
+
+            e_low_values_int = sorted({int(e) for e in e_low_det if e != 0})
+            e_high_values_int = sorted({int(e) for e in e_high_det
+                                        if e not in (float('inf'), float('-inf'))})
+
+            self.energy_min_var.set(min(e_low_values_int))
+            self.energy_max_var.set(max(e_high_values_int))
+
+            self.energy_min2.setvar("value", self.energy_min_var)
+            self.energy_max2.setvar("value", self.energy_max_var)
+
+            self.energy_min2.setvar("values", *e_low_values_int)
+            self.energy_max2.setvar("values", *e_high_values_int)
+
         else:
             self.text_filename2.insert(0, "No file chosen")
 
@@ -956,10 +918,9 @@ class Fitting:
                 )
                 if answer:
                     background.BackgroundWindow.DATA_BKG_SELECTED = False
-                    self.top2.destroy()  # Close current Fit Options window
                     background.BackgroundWindow()  # Open new Background selection
-                else:
-                    self.show_db_var.set(1)  # Keep checkbox checked
+
+                self.show_db_var.set(1)  # Keep checkbox checked
             else:
                 self.on_background_check()  # Original logic (first-time case)
 
@@ -1241,7 +1202,7 @@ class Fitting:
                                    "Please select a fit model before clicking 'Do Fit'.")
             return
 
-        if Fitting.fname is None and Fitting.rname is None:
+        if self.fname is None and self.rname is None:
             messagebox.showwarning("No File Selected", "Please, choose input file.")
             return
 
@@ -1620,6 +1581,7 @@ class Fitting:
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
                 self.user_param_bounds.get(model_key, Fitting.default_param_bounds.get(model_key, {})))
             E_cut_bound = (initial_values.get("Ec_min", fit_Emin), initial_values.get("Ec_max", fit_Emax))
+            E_cut_bound = (E_cut_bound[0] if E_cut_bound[0] > fit_Emin else fit_Emin, E_cut_bound[1] if E_cut_bound[1] < fit_Emax else fit_Emax)
             E_pivot_val = initial_values.get("E_pivot", 100.0)
 
             model_template = PowerLawCutoffFix(
