@@ -128,10 +128,10 @@ class STIXDownloader:
             results = FitsQuery.query(
                 begin_utc=start,
                 end_utc=end,
-                product_type="xray-spec",
-                level="L1A"
+                product_type=product_type,
+                level=level
             )
-            results.result = [entry for entry in results.result if entry["level"] == "L1A"]
+            results.result = [entry for entry in results.result if entry["level"] == level  ]
             n = len(results)
             if n == 0:
                 self.status_var.set("No files found.")

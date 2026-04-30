@@ -15,6 +15,7 @@ from scipy.optimize import minimize_scalar
 from . import background
 from .fitting.fitters import LevMarCstatFitter
 from .fitting.methods.ForwardFolded import *
+from .io import load_srm_data, get_data, get_srm_data, loader
 
 register_matplotlib_converters()
 
@@ -122,8 +123,8 @@ class Fitting:
         self.top2.title('SPEX Fit Options')  # title of the window
         self.top2.geometry("1000x600")  # size of the new window
 
-        self.fname = None  # Name of the .fits file imported
-        self.rname = None  # # Name of the .fits file imported (response matrix)
+        self.fname = loader.activeFile()
+        self.rname = loader.activeSRMfile()  # # Name of the .fits file imported (response matrix)
 
         self.counts = None  # Matrix contaning the counts per band in function of time time
         self.counts_err = None  # Matrix contaning the error of the counts per band in function of time
@@ -160,7 +161,11 @@ class Fitting:
         self.text_filename = Entry(self.top2, width=30)
         self.text_filename.place(relx=0.72, rely=0.2, anchor=W)
 
-        self.text_filename.insert(0, "No file chosen")
+        if self.fname:
+            self.text_filename.insert(0, self.fname)
+            self.open_file(self.fname)
+        else:
+            self.text_filename.insert(0, "No file chosen")
 
         Button(self.top2, text='Browse ->', command=self.open_file).place(relx=0.92, rely=0.2, anchor=W)
 
@@ -168,7 +173,11 @@ class Fitting:
         Label(self.top2, text="Response: ").place(relx=0.65, rely=0.25, anchor=W)
         self.text_filename2 = Entry(self.top2, width=30)
         self.text_filename2.place(relx=0.72, rely=0.25, anchor=W)
-        self.text_filename2.insert(0, "No file chosen")
+        if self.rname:
+            self.text_filename2.insert(0, self.rname)
+            self.open_srm_file(self.rname)
+        else:
+            self.text_filename2.insert(0, "No file chosen")
 
         Button(self.top2, text='Browse ->', command=self.open_srm_file).place(relx=0.92, rely=0.25, anchor=W)
 
@@ -547,13 +556,13 @@ class Fitting:
         if self.fname:
             self.text_filename.insert(0, self.fname)  # Displays the input file name in Entry box
             # Loading data
-            data1 = self.load_data(self.fname)
-            self.times = data1['time']
-            self.counts = data1['counts']
-            self.counts_err = data1['counts_err']
-            self.e_high_det = data1['e_high']
-            self.e_low_det = data1['e_low']
-            self.time_del = data1['timedel']
+            data = get_data(self.fname)
+            self.times = data['time']
+            self.counts = data['counts']
+            self.counts_err = data['counts_err']
+            self.e_high_det = data['e_high']
+            self.e_low_det = data['e_low']
+            self.time_del = data['timedel']
             self.update_energy_range()
         else:
             self.text_filename.insert(0, "No file chosen")
@@ -581,29 +590,11 @@ class Fitting:
         if self.rname:
             self.text_filename2.insert(0, self.rname)  # Displays the input file name in Entry box
             # Loading data
-            data = self.load_srm_data(self.rname)
+            data = get_srm_data(self.rname)
             self.e_low_true = data['ENERG_LO']
             self.e_high_true = data['ENERG_HI']
             self.matrix = data['MATRIX']
             self.update_energy_range()
-
-            usable = np.arange(min(self.matrix.shape[1], len(self.e_low_det)))
-            e_low_det = self.e_low_det[usable]
-            e_high_det = self.e_high_det[usable]
-
-            e_low_values_int = sorted({int(e) for e in e_low_det if e != 0})
-            e_high_values_int = sorted({int(e) for e in e_high_det
-                                        if e not in (float('inf'), float('-inf'))})
-
-            self.energy_min_var.set(min(e_low_values_int))
-            self.energy_max_var.set(max(e_high_values_int))
-
-            self.energy_min2.setvar("value", self.energy_min_var)
-            self.energy_max2.setvar("value", self.energy_max_var)
-
-            self.energy_min2.setvar("values", *e_low_values_int)
-            self.energy_max2.setvar("values", *e_high_values_int)
-
         else:
             self.text_filename2.insert(0, "No file chosen")
 
@@ -634,125 +625,6 @@ class Fitting:
         menu.delete(0, "end")
         for val in e_high_values_int:
             menu.add_command(label=val, command=lambda v=val: self.energy_max_var.set(v))
-
-    @staticmethod
-    def load_data(file):
-        """
-        Lit un fichier FITS STIX et extrait les données spectrales en
-        parcourant toutes les extensions HDU disponibles.
-
-        Parameters
-        ----------
-        file : str
-            Chemin complet du fichier FITS.
-
-        Returns
-        -------
-        dict avec les clés :
-            'counts'     : ndarray (T, C) — comptages bruts.
-            'counts_err' : ndarray (T, C) — erreurs sur les comptages.
-            'time'       : ndarray (T,)   — temps (s depuis epoch).
-            'timedel'    : ndarray (T,)   — durée des pas de temps (s).
-            'e_low'      : ndarray (C,)   — bornes inférieures des canaux (keV).
-            'e_high'     : ndarray (C,)   — bornes supérieures des canaux (keV).
-            'triggers'   : ndarray, optionnel.
-            'obt_start', 'obt_end' : ndarray, optionnels.
-
-        Notes
-        -----
-        Un avertissement est affiché pour toute clé requise absente du FITS.
-        """
-        hdulist = fits.open(file)  # Reads the data
-        hdulist.info()  # Displays the content of the read file
-
-        result = {}
-
-        for hdu in hdulist:
-            if not hasattr(hdu, 'columns'):
-                continue
-            colnames = hdu.columns.names
-
-            # Time & Timedel
-            if 'time' in colnames and 'timedel' in colnames:
-                result['time'] = hdu.data['time']
-                result['timedel'] = hdu.data['timedel']
-
-            # Counts
-            if 'counts' in colnames:
-                result['counts'] = hdu.data['counts']
-            if 'counts_comp_err' in colnames or 'counts_err' in colnames:
-                err_col = 'counts_comp_err' if 'counts_comp_err' in colnames else 'counts_err'
-                result['counts_err'] = hdu.data[err_col]
-
-            # Triggers (optionnel)
-            if 'triggers' in colnames:
-                result['triggers'] = hdu.data['triggers']
-
-            # Energy bins
-            if 'e_low' in colnames and 'e_high' in colnames:
-                result['e_low'] = hdu.data['e_low']
-                result['e_high'] = hdu.data['e_high']
-
-            # Version info
-            if 'obt_start' in colnames and 'obt_end' in colnames:
-                result['obt_start'] = hdu.data['obt_start']
-                result['obt_end'] = hdu.data['obt_end']
-
-        # Vérifications de base
-        required_keys = ['counts', 'counts_err', 'e_low', 'e_high', 'time', 'timedel']
-        for key in required_keys:
-            if key not in result:
-                print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
-        return result
-
-        # return hdulist[2].data, hdulist[3].data, hdulist[0].header, hdulist[3].header
-
-    @staticmethod
-    def load_srm_data(file):
-        """
-        Lit un fichier FITS de matrice de réponse instrumentale STIX.
-
-        Parameters
-        ----------
-        file : str
-            Chemin complet du fichier FITS SRM.
-
-        Returns
-        -------
-        dict avec les clés :
-            'MATRIX'   : ndarray (N, M) — matrice de réponse.
-            'ENERG_LO' : ndarray (N,)   — bornes inférieures en énergie vraie (keV).
-            'ENERG_HI' : ndarray (N,)   — bornes supérieures en énergie vraie (keV).
-
-        Notes
-        -----
-        Un avertissement est affiché pour toute clé requise absente du FITS.
-        """
-        hdulist = fits.open(file)  # Reads the data
-        hdulist.info()  # Displays the content of the read file
-
-        result = {}
-
-        for hdu in hdulist:
-            if not hasattr(hdu, 'columns'):
-                continue
-            colnames = hdu.columns.names
-
-            # Matrix
-            if 'MATRIX' in colnames:
-                result['MATRIX'] = hdu.data['MATRIX']
-
-            # Energy bins
-            if 'ENERG_LO' in colnames and 'ENERG_HI' in colnames:
-                result['ENERG_LO'] = hdu.data['ENERG_LO']
-                result['ENERG_HI'] = hdu.data['ENERG_HI']
-
-        # Vérifications de base
-        required_keys = ['MATRIX', 'ENERG_LO', 'ENERG_HI']
-        for key in required_keys:
-            if key not in result:
-                print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
-        return result
 
     def onSelect(self, event):
         """

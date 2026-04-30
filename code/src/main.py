@@ -31,6 +31,9 @@ from user_guide import open_user_guide
 
 # ========================= Functions to activate the menu bars and menu options =========================
 
+def SelectDownload():
+    """Creating a new window with widgets and options to download *.FITS"""
+    STIXDownloader(root)
 
 def SelectInput():
     """Creates a new window called 'Select Plotting'. Plots data for rate, counts and flux in different profiles."""
@@ -70,11 +73,6 @@ def clickedHelp_on_Help():
                                                  '\nIf it does not appear, you may need to find it on the taskbar.')
 
 
-def clickedUserGuide():
-    open_user_guide()
-
-
-
 # ========================= Creating main window =========================
 
 root = Tk()
@@ -112,10 +110,7 @@ windowmenu = Menu(mainmenu, tearoff=0)
 helpmenu = Menu(mainmenu, tearoff=0)
 
 # Dans la construction du menu :
-filemenu.add_command(
-    label="Download STIX Data...",
-    command=lambda: STIXDownloader(root)
-)
+filemenu.add_command(label="Download STIX Data...", command=SelectDownload)
 
 filemenu.add_command(label="Select Input ...", command=SelectInput)
 filemenu.add_command(label="Select Background ...", command=SelectBackground)
@@ -170,7 +165,7 @@ windowmenu.add_command(label="Multi-Panel Options")
 helpmenu.add_command(label="STIX Guide", command=STIX_Guide)
 helpmenu.add_command(label="Contacts", command=clickedContact)
 helpmenu.add_command(label="Help on Help", command=clickedHelp_on_Help)
-helpmenu.add_command(label="User Guide", command=clickedUserGuide)
+helpmenu.add_command(label="User Guide", command=open_user_guide)
 
 mainmenu.add_cascade(label="File", menu=filemenu)
 mainmenu.add_cascade(label="Window_Control", menu=windowmenu)

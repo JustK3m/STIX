@@ -1,28 +1,44 @@
 from tkinter import *
 from tkinter.filedialog import askopenfilename
-from tkcalendar import DateEntry
 from astropy.io import fits
 from astropy.table import Table
 from .graphics import plotting
 import os
 import sys
-from sunpy.net import Fido, attrs as a
-from stixpy.net.client import STIXClient
+
+from .io import loader
+
+_PLOT_DISPATCH = {
+    ('Rate',   'time'):   'rate_vs_time_plotting',
+    ('Rate',   'spec'):   'plot_spectrum_rate',
+    ('Rate',   'specgr'): 'plot_spectrogram_rate',
+    ('Counts', 'time'):   'counts_vs_time_plotting',
+    ('Counts', 'spec'):   'plot_spectrum_counts',
+    ('Counts', 'specgr'): 'plot_spectrogram_counts',
+    ('Flux',   'time'):   'flux_vs_time_plotting',
+    ('Flux',   'spec'):   'plot_spectrum_flux',
+    ('Flux',   'specgr'): 'plot_spectrogram_flux',
+}
 
 class InputWindow:
-    """Class to create "Select Input Window" menu option in STIX.
-    Rout: Go to top menu bars -> File -> Select Input.
+    """Class to create "Select Plotting Window" menu option in STIX.
+    Rout: Go to top menu bars -> File -> Select Plotting.
     Initiates the parameters and widgets"""
 
+
     def __init__(self, root):
-        """Creating a new window for 'Select Input' part, using the 'place' geometry manager, allowing to explicitly
+        """Creating a new window for 'Select Plotting' part, using the 'place' geometry manager, allowing to explicitly
         set the position and dimensions of window. The place manager can be accessed through the place method.
         It can be applied to all standard widgets."""
+        self.headers = None
+        self.data = None
+        self.e_high = None
+        self.e_low = None
         self.top1 = Toplevel()
-        self.top1.title('STIX Input Options')
-        self.top1.geometry("1000x600")
-        Label(self.top1, text="Select Input", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
-                                                                                               anchor=N)
+        self.top1.title('STIX Plotting Options')
+        self.top1.geometry("1000x400")
+        Label(self.top1, text="Select Plotting", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
+                                                                                                  anchor=N)
         # Creates a window to inform user hdul is empty
         self.hdul = None
         self.root = root
@@ -30,6 +46,32 @@ class InputWindow:
         # 'Select input' window should contain 2 frames:
         # 1) Widgets to load the data, read the content of .fits file extensions, etc;
         # 2) Widgets to  select the energy bands and time bands intervals, and plot.
+
+        # ==================== First frame and additional widgets ====================
+
+        # The name of the widget is in the 'text' parameter
+        self.frame1 = LabelFrame(self.top1, relief=RAISED, borderwidth=1)
+        self.frame1.place(relx=0.5, rely=0.08, relheight=0.60, relwidth=0.9, anchor=N)
+
+        self.name = loader.activeFile()
+
+        Label(self.frame1, text="Spectrum or Image File: ").place(relx=0.01, rely=0.2)
+
+        self.textFilename = Entry(self.frame1, width=20)
+        self.textFilename.place(relx=0.2, rely=0.18, relheight=0.16, relwidth=0.57)
+
+        if self.name is not None:
+            self.textFilename.insert(0, self.name)
+            self.open_file(self.name)
+        else:
+            self.textFilename.insert(0, "No file chosen")
+
+        self.browseButton = Button(self.frame1, text='Browse ->', command=self.open_file)
+        self.browseButton.place(relx=0.8, rely=0.186)
+
+        self.chkBtEntireFile = Checkbutton(self.frame1, text="Entire file", command=self.checked)
+        self.chkBtEntireFile.place(relx=0.03, rely=0.37)
+        self.chkBtEntireFile.select()
 
         # Open file
         self.evt_data = Table()
@@ -39,47 +81,27 @@ class InputWindow:
         self.energie_summarize = Table()
         self.detector_summarize = Table()
 
+        # Select Start data and End data for plotting if different of file's information(start-end)
+        self.SetFromButton = Label(self.frame1, text="Set from -> ", state=DISABLED)
+        self.SetFromButton.place(relx=0.1, rely=0.55)
+
         # Change Button to Label and insert the date data
         self.Times_range = []  # value for Times ranges
 
         self.start_date_var = StringVar()
         self.end_date_var = StringVar()
-        self.start_time_Input = StringVar()
-        self.end_time_Input = StringVar()
+        self.start_time_plotting = StringVar()
+        self.end_time_plotting = StringVar()
 
-        self.header_primary = None
-
-        # ==================== First frame and additional widgets ====================
-
-        # The name of the widget is in the 'text' parameter
-        self.frame1 = LabelFrame(self.top1, relief=RAISED, borderwidth=1)
-        self.frame1.place(relx=0.5, rely=0.08, relheight=0.60, relwidth=0.9, anchor=N)
-
-        self.name = None
-
-        Label(self.frame1, text="Spectrum or Image File: ").place(relx=0.01, rely=0.2)
-
-        self.textFilename = Entry(self.frame1, width=20)
-        self.textFilename.place(relx=0.2, rely=0.18, relheight=0.16, relwidth=0.57)
-
-        self.textFilename.insert(0, "No file chosen")
-
-        Button(self.frame1, text='Browse ->', command=self.open_file).place(relx=0.8, rely=0.186)
-
-        self.chkBtEntireFile = Checkbutton(self.frame1, text="Entire file", command=self.checked)
-        self.chkBtEntireFile.place(relx=0.03, rely=0.37)
-        self.chkBtEntireFile.select()
-
-        # Select Start data and End data for plotting if different of file's information(start-end)
-        Label(self.frame1, text="Set from -> ", state=DISABLED).place(relx=0.1, rely=0.55)
-
-        Label(self.frame1, text="Start", state=DISABLED).place(relx=0.24, rely=0.55)
+        self.StartButton = Label(self.frame1, text="Start", state=DISABLED)
+        self.StartButton.place(relx=0.24, rely=0.55)
 
         self.textStart = Entry(self.frame1, textvariable=self.start_date_var, width=20)
         self.textStart.place(relx=0.31, rely=0.55, height=33, width=190)
         self.textStart['state'] = 'disabled'
 
-        Label(self.frame1, text="End", state=DISABLED).place(relx=0.53, rely=0.55)
+        self.EndButton = Label(self.frame1, text="End", state=DISABLED)
+        self.EndButton.place(relx=0.53, rely=0.55)
 
         self.textEnd = Entry(self.frame1, textvariable=self.end_date_var, width=20)
         self.textEnd.place(relx=0.59, rely=0.55, height=33, width=190)
@@ -92,6 +114,7 @@ class InputWindow:
         # "Show Header" button. When clicked, gives the information from primary_header = hdulist[0].header.
         Button(self.frame1, text="Show Header", command=self.ShowHeader).place(relx=0.55, rely=0.81, anchor=NW)
 
+        self.header_primary = None
 
         # ==================== Second frame and plotting section ====================
 
@@ -106,7 +129,8 @@ class InputWindow:
         self.var = StringVar(self.frame1)
         self.var.set(self.Component_choices[0])
         self.var.set(self.Component_choices[0])
-        OptionMenu(self.frame2, self.var, *self.Component_choices).place(relx=0.11, rely=0.5, anchor=W)
+        self.selection = OptionMenu(self.frame2, self.var, *self.Component_choices)
+        self.selection.place(relx=0.11, rely=0.5, anchor=W)
 
         Button(self.frame2, text="Plot Spectrum",
                                          command=lambda: self.show_plot("spec")).place(relx=0.31, rely=0.5, anchor=W)
@@ -118,6 +142,8 @@ class InputWindow:
                                             command=lambda: self.show_plot("specgr")).place(relx=0.62, rely=0.5, anchor=W)
 
         Button(self.top1, text="Close", command=self.destroy).place(relx=0.5, rely=0.9, anchor=N)
+
+    # ============================ Main methods ============================
 
     def open_file(self, file=None):
         """Reads the input data using Astropy library. It can be any extension. RHESSI .fits files are analysed. \n
@@ -135,19 +161,20 @@ class InputWindow:
         if self.name:
             with fits.open(self.name) as hdul:
                 self.hdul = hdul
-                self.textFilename.insert(0, self.name)  # Displays the input file name in Entry box
-                # Loads data to do the plot
-                data = InputWindow.extract_stix_data(self.hdul)
+            self.textFilename.insert(0, self.name)  # Displays the input file name in Entry box
 
-                self.evt_data = data['counts']
-                self.e_low = data['e_low']
-                self.e_high = data['e_high']
-                
-                headers = InputWindow.extract_stix_header(self.hdul)
-                self.time_summarize = [data['time'][-1], headers.get('DATE_BEG', headers.get('DATE-BEG', 'Unknown')),
-                                        headers.get('DATE_END', headers.get('DATE-END', 'Unknown'))]  # time data
+            # Loads data to do the plot
+            self.data = loader.get_data(self.name)
 
-                self.textFilename.insert(0, self.name)  # Displays the input file name in Entry box
+            self.evt_data = self.data['counts']
+            self.e_low = self.data['e_low']
+            self.e_high = self.data['e_high']
+
+            self.headers = loader.get_header(self.name)
+            self.time_summarize = [self.data['time'][-1], self.headers.get('DATE_BEG', self.headers.get('DATE-BEG', 'Unknown')),
+                                   self.headers.get('DATE_END', self.headers.get('DATE-END', 'Unknown'))]  # time data
+
+            self.textFilename.insert(0, self.name)  # Displays the input file name in Entry box
         else:
             self.textFilename.insert(0, "No file chosen")
 
@@ -160,19 +187,14 @@ class InputWindow:
         frameSummarize = LabelFrame(top, relief=RAISED, borderwidth=2)
         frameSummarize.pack(side=TOP, expand=True)
 
-        # Loads data to do the plot
-        hdu = fits.open(self.name)
-        headers = InputWindow.extract_stix_header(hdu)
-        data = InputWindow.extract_stix_data(hdu)
-
-        # Loads headers information
-        self.data_file = headers['INSTRUME']  # data type
-        self.time_summarize = [data['time'][-1], headers.get('DATE_BEG', headers.get('DATE-BEG', 'Unknown')),
-                                headers.get('DATE_END', headers.get('DATE-END', 'Unknown'))]  # time data
-        self.energie_summarize = [data['counts'].shape[1],
-                                    max(min(data['e_low']), min(data['e_high'])),
-                                    min(max(data['e_low']),
-                                        max(data['e_high']))]  # energies data
+        # Loads headers informations
+        self.data_file = self.headers['INSTRUME']  # data type
+        self.time_summarize = [self.data['time'][-1], self.headers.get('DATE_BEG', self.headers.get('DATE-BEG', 'Unknown')),
+                               self.headers.get('DATE_END', self.headers.get('DATE-END', 'Unknown'))]  # time data
+        self.energie_summarize = [self.data['counts'].shape[1],
+                                  max(min(self.data['e_low']), min(self.data['e_high'])),
+                                  min(max(self.data['e_low']),
+                                      max(self.data['e_high']))]  # energies data
         self.detector_summarize = ["No information found."]
 
         txt = ["\n\n\nSpectrum or Image File Summary",
@@ -183,7 +205,7 @@ class InputWindow:
                "\n#Energy Bins: ", self.energie_summarize[0],
                "\nEnergy range: ", self.energie_summarize[1], ' to ', self.energie_summarize[2],
                "\nDetectors Used: ", self.detector_summarize[0]]
-            #    ,"\nResponse Info: ", self.name]
+        #    ,"\nResponse Info: ", self.name]
         liste = Text(frameSummarize)
         for t in txt:
             liste.insert(END, t)
@@ -210,138 +232,64 @@ class InputWindow:
         scrollbar1.config(command=header.yview)
 
     def destroy(self):
-        """Closing 'Select Input' window, clicking 'Close' button."""
+        """Closing 'Select Plotting' window, clicking 'Close' button."""
         self.top1.destroy()
 
     def submit(self):
-        """Submit the value of start and end times for Input with the date."""
+        """Submit the value of start and end times for plotting with the date."""
         self.Times_range = []
+        self.start_time_plotting = self.start_date_var.get()
+        self.end_time_plotting = self.end_date_var.get()
 
         # Creation of value of editInterval_times
-        self.Times_range.append(self.start_date_var.get())
-        self.Times_range.append(self.end_date_var.get())
+        self.Times_range.append(self.start_time_plotting)
+        self.Times_range.append(self.end_time_plotting)
 
     def checked(self):
-        """ 'Set From' button activation.
-        Allows user to select between two distinct values (e.g. on/off)."""
-        if self.SetFromButton['state'] == 'disabled':
-            # ACTIVER
-            self.SetFromButton['state'] = 'normal'
-            self.StartButton['state'] = 'normal'
-            self.EndButton['state'] = 'normal'
-            self.textStart['state'] = 'normal'
-            self.textEnd['state'] = 'normal'
+        """Toggle the 'Set From' date-range entries on or off."""
+        entries = (self.textStart, self.textEnd)
+        is_off = self.SetFromButton['state'] == 'disabled'
 
-            # REMPLIR
-            self.textStart.delete(0, 'end')
-            self.textEnd.delete(0, 'end')
+        new_state = 'normal' if is_off else 'disabled'
+        self.SetFromButton['state'] = new_state
+        for entry in entries:
+            entry['state'] = new_state
+            entry.delete(0, 'end')
+
+        if is_off:
             self.textStart.insert(0, self.time_summarize[1])
             self.textEnd.insert(0, self.time_summarize[2])
 
-        else:
-            # DESELECTION = VIDER et DESACTIVER
-            self.textStart.delete(0, 'end')
-            self.textEnd.delete(0, 'end')
-
-            self.SetFromButton['state'] = 'disabled'
-            self.StartButton['state'] = 'disabled'
-            self.EndButton['state'] = 'disabled'
-            self.textStart['state'] = 'disabled'
-            self.textEnd['state'] = 'disabled'
-
     # ==================== Calling for plotting.py ====================
 
-    def show_plot(self, e):
-        """Calls the class to plot Spectrum, Time profile, Spectrogram.
-        Parameters are taken from .fits file, chosen(loaded) by user."""
+    def _build_plot_instance(self):
+        """Instantiate a Plotting object from the currently loaded file."""
 
-        hdu = fits.open(self.name)  # Opening the file
-        data = InputWindow.extract_stix_data(hdu)  # Extracting data from the file
-        headers = InputWindow.extract_stix_header(hdu)  # Extracting header from the file
-
-        # If entire file:
         if self.SetFromButton['state'] == 'disabled':
-            plots = plotting.Plotting(data=data, headers=headers)
-        # If not entire file:
-        elif self.SetFromButton['state'] == 'normal':
-            self.submit()
-            plots = plotting.Plotting(self.Times_range[0], self.Times_range[1], self.time_summarize[1], data, headers)
-        else:
-            plots = None
-            print('Error')
+            return plotting.Plotting(data=self.data, headers=self.headers)
 
-        if self.var.get() == 'Rate':
-            if e == 'time':
-                plots.rate_vs_time_plotting()
-            elif e == 'spec':
-                plots.plot_spectrum_rate()
-            elif e == 'specgr':
-                plots.plot_spectrogram_rate()
+        self.submit()
+        return plotting.Plotting(
+            self.Times_range[0], self.Times_range[1],
+            self.time_summarize[1], self.data, self.headers,
+        )
 
-        if self.var.get() == 'Counts':
-            if e == 'time':
-                plots.counts_vs_time_plotting()
-            elif e == 'spec':
-                plots.plot_spectrum_counts()
-            elif e == 'specgr':
-                plots.plot_spectrogram_counts()
+    def show_plot(self, plot_type):
+        """Dispatch to the appropriate Plotting method.
 
-        if self.var.get() == 'Flux':
-            if e == 'time':
-                plots.flux_vs_time_plotting()
-            elif e == 'spec':
-                plots.plot_spectrum_flux()
-            elif e == 'specgr':
-                plots.plot_spectrogram_flux()
+        Parameters
+        ----------
+        plot_type : {'time', 'spec', 'specgr'}
+        """
+        plots = self._build_plot_instance()
+        if plots is None:
+            print('Error: could not build plot instance.')
+            return
 
-    def extract_stix_header(hdulist):
-        result = {}
+        unit = self.var.get()
+        method = _PLOT_DISPATCH.get((unit, plot_type))
+        if method is None:
+            print(f"No plot handler for unit={unit!r}, type={plot_type!r}")
+            return
 
-        for key, value, comment in hdulist[0].header.cards:
-            result[key] = value
-
-        for key, value, comment in hdulist[3].header.cards:
-            result[key] = value
-        
-        return result
-    
-    def extract_stix_data(hdulist):
-        result = {}
-
-        for hdu in hdulist:
-            if not hasattr(hdu, 'columns'):
-                continue
-            colnames = hdu.columns.names
-
-            # Time & Timedel
-            if 'time' in colnames and 'timedel' in colnames:
-                result['time'] = hdu.data['time']
-                result['timedel'] = hdu.data['timedel']
-
-            # Counts
-            if 'counts' in colnames:
-                result['counts'] = hdu.data['counts']
-            if 'counts_comp_err' in colnames or 'counts_err' in colnames:
-                err_col = 'counts_comp_err' if 'counts_comp_err' in colnames else 'counts_err'
-                result['counts_err'] = hdu.data[err_col]
-
-            # Triggers (optionnel)
-            if 'triggers' in colnames:
-                result['triggers'] = hdu.data['triggers']
-
-            # Energy bins
-            if 'e_low' in colnames and 'e_high' in colnames:
-                result['e_low'] = hdu.data['e_low']
-                result['e_high'] = hdu.data['e_high']
-
-            # Version info
-            if 'obt_start' in colnames and 'obt_end' in colnames:
-                result['obt_start'] = hdu.data['obt_start']
-                result['obt_end'] = hdu.data['obt_end']
-
-        # Vérifications de base
-        required_keys = ['counts', 'counts_err', 'e_low', 'e_high', 'time', 'timedel']
-        for key in required_keys:
-            if key not in result:
-                print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
-        return result
+        getattr(plots, method)()
