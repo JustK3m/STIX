@@ -173,7 +173,7 @@ class BrokenPowerLaw(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  2 — Exp Power Law
+#  3 — VTH
 # ══════════════════════════════════════════════════════════
 class VTH(FittableModel):
     """
@@ -245,7 +245,7 @@ class VTH(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  3 — V_TH
+#  4 — ExpPowerLaw
 # ══════════════════════════════════════════════════════════
 class ExpPowerLaw(FittableModel):
     """
@@ -311,7 +311,7 @@ class ExpPowerLaw(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  4 — V_TH + Power Law
+#  5 — V_TH + Power Law
 # ══════════════════════════════════════════════════════════
 class VTHPlusPowerLaw(FittableModel):
     """
@@ -393,7 +393,7 @@ class VTHPlusPowerLaw(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  5 — Power Law Cutoff Fix
+#  6 — Power Law Cutoff Fix
 # ══════════════════════════════════════════════════════════
 class PowerLawCutoffFix(FittableModel):
     """
@@ -455,205 +455,4 @@ class PowerLawCutoffFix(FittableModel):
 
         folded = np.dot(true_fluxes, self.matrix) / self.exposure
 
-        return folded
-
-
-# # ══════════════════════════════════════════════════════════
-# #  6 — Power Law Cutoff Free
-# # ══════════════════════════════════════════════════════════
-# class PowerLawCutoffFree(FittableModel):
-#     """
-#     Power law avec cutoff libre (E_c est un Parameter ajusté).
-#
-#     P(E) = A * E^(-alpha)  si E >= E_cut
-#            0               sinon  (coupure dure)
-#
-#     Parameters
-#     ----------
-#     amplitude : float
-#         Normalisation du flux (> 0).
-#     alpha     : float
-#         Indice spectral (> 0).
-#     E_cut     : float
-#         Énergie de coupure en keV (> 0).
-#     """
-#
-#     n_inputs = 1
-#     n_outputs = 1
-#
-#     amplitude = Parameter(default=1e-2)  # flux > 0 obligatoire
-#     alpha = Parameter(default=2.0, min=1e-5)  # indice physique
-#
-#     def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-#         super().__init__(**kwargs)
-#         self.e_low_true = np.asarray(e_low_true, dtype=float)
-#         self.e_high_true = np.asarray(e_high_true, dtype=float)
-#         self.matrix = np.asarray(matrix, dtype=float)
-#         self.exposure = exposure
-#         self.E_pivot = E_pivot
-#         self.E_cut = 10
-#
-#     def evaluate(self, x, amplitude, alpha):
-#         model_func = lambda E: np.where(E >= self.E_cut, amplitude * (E / self.E_pivot) ** (-alpha), 0.0)
-#
-#         true_fluxes = np.array([
-#             integrate_flux(e1, e2, model_func)
-#             for e1, e2 in zip(self.e_low_true, self.e_high_true)
-#         ])
-#
-#         folded = np.dot(true_fluxes, self.matrix) / self.exposure
-#
-#         return folded
-#
-#
-# # ══════════════════════════════════════════════════════════
-# #  7 — V_TH x Cutoff Fix
-# # ══════════════════════════════════════════════════════════
-# class VTHPowerLawCutoffFix(FittableModel):
-#     n_inputs = 1
-#     n_outputs = 1
-#
-#     # Paramètres VTH
-#     EM = Parameter(default=1e48, bounds=(1e44, 1e52))
-#     T = Parameter(default=1.0, bounds=(0.1, 50.0))
-#
-#     # Paramètres Power Law
-#     amplitude = Parameter(default=1e-2)
-#     alpha = Parameter(default=2.0, min=1e-5)
-#
-#     def __init__(self, e_low_true, e_high_true, matrix, exposure, E_cut=10.0, E_pivot=100, **kwargs):
-#         super().__init__(**kwargs)
-#         self.e_low_true = e_low_true
-#         self.e_high_true = e_high_true
-#         self.matrix = matrix
-#         self.exposure = exposure
-#         self.E_cut = E_cut
-#         self.E_pivot = E_pivot
-#
-#     def evaluate(self, x, EM, T, amplitude, alpha):
-#         # Constante de Gaunt
-#         gff = 1.2
-#         A = 1.07e-42 * gff
-#         safe_T = max(1e-3, T)
-#
-#         def model_total(E):
-#             # Power-law component
-#             power = np.where(E >= self.E_cut, amplitude * (E / self.E_pivot) ** (-alpha),
-#                              (A * EM) / (E * np.sqrt(safe_T)) * np.exp(-E / safe_T))
-#             return power
-#
-#         # Intégration du flux photonique dans chaque bin SRM
-#         true_fluxes = np.array([
-#             integrate_flux(e1, e2, model_total)
-#             for e1, e2 in zip(self.e_low_true, self.e_high_true)
-#         ])
-#
-#         # Forward-folding via SRM
-#         folded = np.dot(true_fluxes, self.matrix) / self.exposure
-#         return folded
-#
-#
-# # ══════════════════════════════════════════════════════════
-# #  8 — V_TH x Cutoff Free
-# # ══════════════════════════════════════════════════════════
-# class VTHPowerLawCutoffFree(FittableModel):
-#     n_inputs = 1
-#     n_outputs = 1
-#
-#     # Paramètres VTH
-#     EM = Parameter(default=1e48, bounds=(1e44, 1e52))
-#     T = Parameter(default=1.0, bounds=(0.1, 50.0))
-#
-#     # Paramètres Power Law
-#     amplitude = Parameter(default=1e-2)
-#     alpha = Parameter(default=2.0, min=1e-5)
-#     E_cut = Parameter(default=10, min=4, max=120)
-#
-#     def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100, **kwargs):
-#         super().__init__(**kwargs)
-#         self.e_low_true = e_low_true
-#         self.e_high_true = e_high_true
-#         self.matrix = matrix
-#         self.exposure = exposure
-#         self.E_pivot = E_pivot
-#
-#     def evaluate(self, x, EM, T, amplitude, alpha, E_cut):
-#         # Constante de Gaunt
-#         gff = 1.2
-#         A = 1.07e-42 * gff
-#         safe_T = max(1e-3, T)
-#
-#         def model_total(E):
-#             # Power-law component
-#             power = np.where(E >= E_cut, amplitude * (E / self.E_pivot) ** (-alpha),
-#                              (A * EM) / (E * np.sqrt(safe_T)) * np.exp(-E / safe_T))
-#             return power
-#
-#         # Intégration du flux photonique dans chaque bin SRM
-#         true_fluxes = np.array([
-#             integrate_flux(e1, e2, model_total)
-#             for e1, e2 in zip(self.e_low_true, self.e_high_true)
-#         ])
-#
-#         # Forward-folding via SRM
-#         folded = np.dot(true_fluxes, self.matrix) / self.exposure
-#         return folded
-
-
-# === Power Law Hard Cutoff ===
-class PowerLawHardCutoff(FittableModel):
-    n_inputs = 1
-    n_outputs = 1
-
-    amplitude = Parameter(default=1e-2)
-    alpha = Parameter(default=2.0)
-    E_cut = Parameter(default=3.0)  # coupure dure
-
-    def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-        super().__init__(**kwargs)
-        self.e_low_true = e_low_true
-        self.e_high_true = e_high_true
-        self.matrix = matrix
-        self.exposure = exposure
-        self.E_pivot = E_pivot
-
-    def evaluate(self, x, amplitude, alpha, E_cut):
-        # Power law avec coupure dure
-        model_func = lambda E: np.where(
-            E >= E_cut,
-            amplitude * (E / self.E_pivot) ** (-alpha),
-            0.0
-        )
-        true_fluxes = np.array([
-            integrate_flux(e1, e2, model_func)
-            for e1, e2 in zip(self.e_low_true, self.e_high_true)
-        ])
-        folded = np.dot(true_fluxes, self.matrix) / self.exposure
-        return folded
-
-
-# === Power Law Cutoff ===
-class PowerLawCutoff(FittableModel):
-    n_inputs = 1
-    n_outputs = 1
-
-    amplitude = Parameter(default=1e-2)
-    alpha = Parameter(default=2.0)
-    E_cut = Parameter(default=10.0)  # nouveau paramètre
-
-    def __init__(self, e_low_true, e_high_true, matrix, exposure, E_pivot=100.0, **kwargs):
-        super().__init__(**kwargs)
-        self.e_low_true = e_low_true
-        self.e_high_true = e_high_true
-        self.matrix = matrix
-        self.exposure = exposure
-        self.E_pivot = E_pivot
-
-    def evaluate(self, x, amplitude, alpha, E_cut):
-        model_func = lambda E: amplitude * (E / self.E_pivot) ** (-alpha) * np.exp(-E / E_cut)
-        true_fluxes = np.array([
-            integrate_flux(e1, e2, model_func)
-            for e1, e2 in zip(self.e_low_true, self.e_high_true)
-        ])
-        folded = np.dot(true_fluxes, self.matrix) / self.exposure
         return folded

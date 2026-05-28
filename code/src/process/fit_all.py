@@ -1,12 +1,9 @@
 import copy
-import os
-import sys
 import tkinter as tk
 from tkinter import *
 from tkinter import messagebox
 from tkinter.filedialog import askopenfilename
 
-from astropy.io import fits
 from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
@@ -15,7 +12,7 @@ from scipy.optimize import minimize_scalar
 from . import background
 from .fitting.fitters import LevMarCstatFitter
 from .fitting.methods.ForwardFolded import *
-from .io import load_srm_data, get_data, get_srm_data, loader
+from .io import get_data, get_srm_data, loader
 
 register_matplotlib_converters()
 
@@ -1082,16 +1079,16 @@ class Fitting:
         if self.show_db_var.get():
             idx_s = background.BackgroundWindow.DATA_BKG_START
             idx_e = background.BackgroundWindow.DATA_BKG_END
-            bkg = np.mean(self.counts[idx_s:idx_e + 1, :], axis=0)
+            bkg = np.nanmean(self.counts[idx_s:idx_e + 1, :], axis=0)
             raw = np.where(self.counts - bkg > 0, self.counts - bkg, 1e-5)
             absolute_name = "Data - Background"
         else:
             raw = self.counts
             absolute_name = "Data"
 
-        counts_all = np.mean(raw, axis=0)
-        counts_err_all = np.mean(self.counts_err, axis=0)
-        exposure = float(np.mean(self.time_del))
+        counts_all = np.nanmean(raw, axis=0)
+        counts_err_all = np.nanmean(self.counts_err, axis=0)
+        exposure = float(np.nanmean(self.time_del))
 
         e_low_true = self.e_low_true
         e_high_true = self.e_high_true
@@ -1103,12 +1100,26 @@ class Fitting:
         e_low_det = self.e_low_det[usable]
         e_high_det = self.e_high_det[usable]
 
+
+
         valid = (counts_err > 0) & np.isfinite(counts_err) & np.isfinite(counts)
         counts = counts[valid]
         counts_err = counts_err[valid]
         matrix = matrix[:, valid]
         e_low_det = e_low_det[valid]
         e_high_det = e_high_det[valid]
+
+        # ── Vérification que les tableaux ne sont pas vides ───────────────
+        if len(e_low_det) == 0 or len(e_high_det) == 0:
+            messagebox.showerror(
+                "Data error",
+                "Energy channels array is empty.\n\n"
+                "This may be caused by a mismatch between the spectrum file "
+                "and the SRM file (incompatible dimensions).\n\n"
+                f"Spectrum channels : {len(self.e_low_det)}\n"
+                f"SRM channels      : {matrix.shape[1]}"
+            )
+            return
 
         edges_det = np.append(e_low_det, e_high_det[-1])
         dE_det = np.diff(edges_det)
@@ -1433,7 +1444,7 @@ class Fitting:
 
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
-            param_text = (f"Power Law Cutoff Free:\n amplitude={amplitude:.2e}\n"
+            param_text = (f"Power Law Cutoff Fix:\n amplitude={amplitude:.2e}\n"
                           f" alpha={alpha:.2f}\n E_pivot={E_pivot_val:.2f} keV\n"
                           f" E_cut={E_cut_val:.2f} keV")
             if self.show_params_var.get():

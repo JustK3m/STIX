@@ -1,18 +1,19 @@
+import numpy as np
 from astropy.io import fits
 
 _spec_cache = {
-    "fname": None,  # chemin du fichier spectre actuellement en cache
-    "data": None,  # dict retourné par extract_stix_data()
-    "headers": None,  # dict retourné par extract_stix_header()
+    "fpath": None,  # chemin du fichier spectre actuellement en cache
+    "data": None,  # dict retourné par load_data()
+    "headers": None,  # dict retourné par load_header()
 }
 
 _srm_cache = {
-    "rname": None,  # chemin du fichier SRM actuellement en cache
+    "rpath": None,  # chemin du fichier SRM actuellement en cache
     "data": None,  # dict retourné par load_srm_data()
 }
 
 
-def load_data(hdulist):
+def _load_data(hdulist):
     result = {}
 
     for hdu in hdulist:
@@ -20,41 +21,41 @@ def load_data(hdulist):
             continue
         colnames = hdu.columns.names
 
-        # Time & Timedel
-        if 'time' in colnames and 'timedel' in colnames:
-            result['time'] = hdu.data['time']
-            result['timedel'] = hdu.data['timedel']
+        if hdu.name == 'DATA':
+            if 'time' in colnames:
+                result['time']    = hdu.data['time']
+            if 'timedel' in colnames:
+                result['timedel'] = hdu.data['timedel']
+            if 'counts' in colnames:
+                result['counts']  = hdu.data['counts']
+            if 'counts_comp_err' in colnames or 'counts_err' in colnames:
+                err_col = 'counts_comp_err' if 'counts_comp_err' in colnames else 'counts_err'
+                result['counts_err'] = hdu.data[err_col]
+            if 'triggers' in colnames:
+                result['triggers'] = hdu.data['triggers']
+            if 'obt_start' in colnames and 'obt_end' in colnames:
+                result['obt_start'] = hdu.data['obt_start']
+                result['obt_end']   = hdu.data['obt_end']
+            # e_low/e_high dans DATA (fichiers originaux)
+            if 'e_low' in colnames and 'e_high' in colnames:
+                result['e_low']  = hdu.data['e_low']
+                result['e_high'] = hdu.data['e_high']
 
-        # Counts
-        if 'counts' in colnames:
-            result['counts'] = hdu.data['counts']
-        if 'counts_comp_err' in colnames or 'counts_err' in colnames:
-            err_col = 'counts_comp_err' if 'counts_comp_err' in colnames else 'counts_err'
-            result['counts_err'] = hdu.data[err_col]
+        elif hdu.name == 'ENERGIES':
+            # e_low/e_high dans ENERGIES (fichiers fusionnés)
+            # Prioritaire sur DATA si les deux existent
+            if 'e_low' in colnames and 'e_high' in colnames:
+                result['e_low']  = hdu.data['e_low']
+                result['e_high'] = hdu.data['e_high']
 
-        # Triggers (optionnel)
-        if 'triggers' in colnames:
-            result['triggers'] = hdu.data['triggers']
-
-        # Energy bins
-        if 'e_low' in colnames and 'e_high' in colnames:
-            result['e_low'] = hdu.data['e_low']
-            result['e_high'] = hdu.data['e_high']
-
-        # Version info
-        if 'obt_start' in colnames and 'obt_end' in colnames:
-            result['obt_start'] = hdu.data['obt_start']
-            result['obt_end'] = hdu.data['obt_end']
-
-    # Vérifications de base
-    required_keys = ['counts', 'counts_err', 'e_low', 'e_high', 'time', 'timedel']
-    for key in required_keys:
+    for key in ['counts', 'counts_err', 'e_low', 'e_high', 'time', 'timedel']:
         if key not in result:
             print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
+
     return result
 
 
-def load_srm_data(hdulist):
+def _load_srm_data(hdulist):
     """
     Lit un fichier FITS de matrice de réponse instrumentale STIX.
 
@@ -99,7 +100,7 @@ def load_srm_data(hdulist):
     return result
 
 
-def load_header(hdulist):
+def _load_header(hdulist):
     result = {}
 
     for key, value, comment in hdulist[0].header.cards:
@@ -111,35 +112,38 @@ def load_header(hdulist):
     return result
 
 
-def _reload_spec(fname):
+def _reload_spec(fpath):
     """Ouvre le fichier une seule fois et remplit data + headers."""
-    with fits.open(fname) as hdulist:
-        _spec_cache["data"] = load_data(hdulist)
-        _spec_cache["headers"] = load_header(hdulist)
-    _spec_cache["fname"] = fname
+    with fits.open(fpath) as hdulist:
+        _spec_cache["data"] = _load_data(hdulist)
+        _spec_cache["headers"] = _load_header(hdulist)
+    _spec_cache["fpath"] = fpath
 
 
-def get_data(fname):
-    if fname != _spec_cache["fname"] or _spec_cache["data"] is None:
-        _reload_spec(fname)
+def get_data(fpath):
+    if fpath != _spec_cache["fpath"] or _spec_cache["data"] is None:
+        _reload_spec(fpath)
     return _spec_cache["data"]
 
 
-def get_header(fname):
-    if fname != _spec_cache["fname"] or _spec_cache["headers"] is None:
-        _reload_spec(fname)
+def get_header(fpath):
+    if fpath != _spec_cache["fpath"] or _spec_cache["headers"] is None:
+        _reload_spec(fpath)
     return _spec_cache["headers"]
 
 
-def get_srm_data(rname):
-    if rname != _srm_cache["rname"] or _srm_cache["data"] is None:
-        with fits.open(rname) as hdulist:
-            _srm_cache["data"] = load_srm_data(hdulist)
-        _srm_cache["rname"] = rname
+def get_srm_data(rpath):
+    if rpath != _srm_cache["rpath"] or _srm_cache["data"] is None:
+        with fits.open(rpath) as hdulist:
+            _srm_cache["data"] = _load_srm_data(hdulist)
+        _srm_cache["rpath"] = rpath
     return _srm_cache["data"]
 
 def activeFile():
-    return _spec_cache["fname"]
+    return _spec_cache["fpath"]
 
 def activeSRMfile():
-    return _srm_cache["rname"]
+    return _srm_cache["rpath"]
+
+def concat_data(hdu1, hdu2):
+    return hdu1.data + hdu2.data

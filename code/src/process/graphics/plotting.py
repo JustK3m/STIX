@@ -800,9 +800,9 @@ class Plotting:
             for i in range(self.energies_bin):  # for each channel
                 # Determines Rate for "Plot Spectrum"
                 if self.entire_file:
-                    data[i] = np.mean(self.data_plot[:, i])
+                    data[i] = np.nanmean(self.data_plot[:, i])
                 else:
-                    data[i] = np.mean(self.data_plot[self.index_start:self.index_end + 1, i])
+                    data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
             ylabel = 'counts/s'
             title = 'STIX SOLAR Range vs Energy'
 
@@ -810,9 +810,9 @@ class Plotting:
             for i in range(self.energies_bin):  # for each channel
                 # Determines Counts for "Plot Spectrum"
                 if self.entire_file:
-                    data[i] = np.mean(self.counts[:, i])
+                    data[i] = np.nanmean(self.counts[:, i])
                 else:
-                    data[i] = np.mean(self.counts[self.index_start:self.index_end + 1, i])
+                    data[i] = np.nanmean(self.counts[self.index_start:self.index_end + 1, i])
             ylabel = 'counts'
             title = 'STIX SOLAR Counts vs Energy'
 
@@ -821,9 +821,9 @@ class Plotting:
             for i in range(self.energies_bin):  # for each channel
                 # Determines Flux for "Plot Spectrum"
                 if self.entire_file:
-                    data[i] = np.mean(self.data_plot[:, i]) / self.area
+                    data[i] = np.nanmean(self.data_plot[:, i]) / self.area
                 else:
-                    data[i] = np.mean(self.data_plot[self.index_start:self.index_end + 1, i])
+                    data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
             ylabel = 'counts/s/mm²/keV'
             title = 'STIX SOLAR Flux vs Energy'
 
@@ -872,9 +872,9 @@ class Plotting:
     #         for i in range(len(data)):  # for each channel
     #             # Determines Rate for "Plot Spectrum"
     #             if self.entire_file:
-    #                 data[i] = np.mean(self.data_plot[:, i])
+    #                 data[i] = np.nanmean(self.data_plot[:, i])
     #             else:
-    #                 data[i] = np.mean(self.data_plot[self.index_start:self.index_end + 1, i])
+    #                 data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
     #         ylabel = 'counts/s'
     #         title = 'STIX SOLAR Range vs Energy'
 
@@ -882,9 +882,9 @@ class Plotting:
     #         for i in range(len(data)):  # for each channel
     #             # Determines Counts for "Plot Spectrum"
     #             if self.entire_file:
-    #                 data[i] = np.mean(self.counts[:, i])
+    #                 data[i] = np.nanmean(self.counts[:, i])
     #             else:
-    #                 data[i] = np.mean(self.counts[self.index_start:self.index_end + 1, i])
+    #                 data[i] = np.nanmean(self.counts[self.index_start:self.index_end + 1, i])
     #         ylabel = 'counts'
     #         title = 'STIX SOLAR Counts vs Energy'
 
@@ -893,9 +893,9 @@ class Plotting:
     #         for i in range(len(data)):  # for each channel
     #             # Determines Flux for "Plot Spectrum"
     #             if self.entire_file:
-    #                 data[i] = np.mean(self.data_plot[:, i]) / self.area
+    #                 data[i] = np.nanmean(self.data_plot[:, i]) / self.area
     #             else:
-    #                 data[i] = np.mean(self.data_plot[self.index_start:self.index_end + 1, i])
+    #                 data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
     #         ylabel = 'counts/s/mm²/keV'
     #         title = 'STIX SOLAR Flux vs Energy'
 

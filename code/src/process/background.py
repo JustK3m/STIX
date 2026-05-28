@@ -667,7 +667,7 @@ class BackgroundWindow:
             if method == "Median":
                 self.bkg[:, band] = np.median(y_slice)
             elif method == "Mean":
-                self.bkg[:, band] = np.mean(y_slice)
+                self.bkg[:, band] = np.nanmean(y_slice)
             elif method in ("1Poly", "2Poly", "3Poly"):
                 deg  = int(method[0])
                 poly = np.poly1d(np.polyfit(t_slice, y_slice, deg))
