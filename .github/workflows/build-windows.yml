@@ -31,9 +31,6 @@ jobs:
             --name "STIX-Solar-Orbiter" `
             --paths=src `
             --hidden-import matplotlib.backends.backend_tkagg `
-            --hidden-import stixdcpy `
-            --hidden-import stixdcpy.net `
-            --hidden-import stixdcpy.science `
             --collect-all stixdcpy `
             src/main.py
 
@@ -70,9 +67,6 @@ jobs:
             --name "STIX-Solar-Orbiter" \
             --paths=src \
             --hidden-import matplotlib.backends.backend_tkagg \
-            --hidden-import stixdcpy \
-            --hidden-import stixdcpy.net \
-            --hidden-import stixdcpy.science \
             --collect-all stixdcpy \
             src/main.py
 
@@ -106,9 +100,6 @@ jobs:
             --add-data "data:data" \
             --paths=src \
             --hidden-import matplotlib.backends.backend_tkagg \
-            --hidden-import stixdcpy \
-            --hidden-import stixdcpy.net \
-            --hidden-import stixdcpy.science \
             --collect-all stixdcpy \
             src/main.py
 
