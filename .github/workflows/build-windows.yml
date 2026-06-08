@@ -25,7 +25,7 @@ jobs:
       - name: Build EXE with PyInstaller
         run: |
           cd code
-          pyinstaller --onefile --windowed --noconsole --add-data "data;data" --name "STIX-Solor-Orbiter" --paths=src --hidden-import matplotlib.backends.backend_tkagg src/main.py
+          pyinstaller --onefile --windowed --noconsole --add-data "data;data" --name "STIX-Solor-Orbiter" --paths=src --hidden-import matplotlib.backends.backend_tkagg --collect-data "stixdcpy" src/main.py
   
       - name: Upload EXE
         uses: actions/upload-artifact@v4
@@ -60,6 +60,7 @@ jobs:
             --name "STIX-Solar-Orbiter" \
             --paths=src \
             --hidden-import matplotlib.backends.backend_tkagg \
+            --collect-data "stixdcpy" \
             src/main.py
   
       - name: Upload binary
@@ -92,6 +93,7 @@ jobs:
             --add-data "data:data" \
             --paths=src \
             --hidden-import matplotlib.backends.backend_tkagg \
+            --collect-data "stixdcpy" \
             src/main.py
 
       - name: Create macOS DMG
