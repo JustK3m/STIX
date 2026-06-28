@@ -1,4 +1,5 @@
 import copy
+import os.path
 import tkinter as tk
 from tkinter import *
 from tkinter import messagebox
@@ -8,10 +9,11 @@ from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 from scipy.optimize import minimize_scalar
+import numpy as np
 
 from . import background
 from .fitting.fitters import LevMarCstatFitter
-from .fitting.methods.ForwardFolded import *
+from .fitting.methods import *
 from .io import get_data, get_srm_data, loader
 
 register_matplotlib_converters()
@@ -55,6 +57,7 @@ class Fitting:
                                      "amplitude": (1e-12, 1e6), "alpha": (0.1, 50.0)},
         "V_TH x PowerLawCutoffFree": {"EM": (1e44, 1e52), "T": (0.1, 50.0),
                                       "amplitude": (1e-12, 1e6), "alpha": (0.1, 50.0)},
+        "Neural Network":{},
     }
 
     # ── Valeurs initiales par défaut ───────────────────────────
@@ -76,6 +79,7 @@ class Fitting:
         "V_TH x PowerLawCutoffFree": {"EM": 1e48, "T": 1.0,
                                       "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
                                       "Ec_min": 4, "Ec_max": 20},
+        "Neural Network": {},
     }
 
     # create a new window called 'SPEX Fit Options'
@@ -297,7 +301,7 @@ class Fitting:
         Button(self.top2, text="Close", command=lambda: self.top2.destroy()).place(relx=0.5, rely=0.94)
         self.models = ['PowerLaw1D', 'BrokenPowerLaw1D', 'Single Power Law Times an Exponential', 'V_TH',
                        'V_TH + PowerLaw', 'PowerLawCutoffFix', 'PowerLawCutoffFree',
-                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree"]  # , 'Neural Network' function names
+                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree", "Neural Network"]  # , 'Neural Network' function names
         for p in self.models:
             """On the right: place an 'entry text' Scrollbar widget (scrollbar) When user highlight the function, 
             displays the text information about function description and input parameters"""
@@ -1096,11 +1100,10 @@ class Fitting:
 
         usable = np.arange(min(matrix.shape[1], len(self.e_low_det)))
         counts = counts_all[usable]
+
         counts_err = counts_err_all[usable]
         e_low_det = self.e_low_det[usable]
         e_high_det = self.e_high_det[usable]
-
-
 
         valid = (counts_err > 0) & np.isfinite(counts_err) & np.isfinite(counts)
         counts = counts[valid]
@@ -1404,33 +1407,6 @@ class Fitting:
 
             amplitude, alpha = fitted.amplitude.value, fitted.alpha.value
 
-            # E_cut_grid = np.linspace(5, 20, 15)
-            # chi2_values = []
-            #
-            # for ec in E_cut_grid:
-            #     model_ec = PowerLawCutoffFix(
-            #         e_low_true, e_high_true, matrix_fit, exposure, ec, E_pivot_val)
-            #     fitted_ec = self.fit_unconstrained_then_bounded(
-            #         model_ec, x_fit, y_fit, y_err,
-            #         ["amplitude", "alpha"], bounds_map, initial_values)
-            #     chi2 = np.sum(((y_fit - fitted_ec(x_fit)) / (y_err + 1e-30)) ** 2)
-            #     chi2_values.append(chi2)
-            #
-            # chi2_values = np.array(chi2_values)
-            #
-            # plt.figure()
-            # plt.plot(E_cut_grid, chi2_values, 'o-', color='steelblue', label='χ²(E_cut)')
-            # plt.axvline(E_cut_val, color='red', linestyle='--',
-            #             label=f'E_cut utilisé = {E_cut_val:.2f} keV')
-            # plt.axhline(chi2_values.min(), color='orange', linestyle='--',
-            #             label=f'χ² min = {chi2_values.min():.3f}')
-            # plt.xlabel("E_cut (keV)")
-            # plt.ylabel("χ²")
-            # plt.title("χ²(E_cut) — PowerLaw Cutoff Fix")
-            # plt.legend()
-            # plt.grid(True, which="both", ls="--", alpha=0.5)
-            # plt.tight_layout()
-
             model_display = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix, exposure, E_cut_val, E_pivot_val)
             model_display.amplitude.value = amplitude
@@ -1715,6 +1691,16 @@ class Fitting:
 
                 # Power-law component
                 model_func_photon = model_total
+
+        # ══════════════════════════════════════════════════════════
+        #  9 - Neural Network
+        # ══════════════════════════════════════════════════════════
+
+        elif idx == 9:
+            model_key = "Neural Network"
+            nn_model = NeuralNetModel.load("data/nn_powerlaw.pt", "cpu")
+            model_y = to_unit(np.asarray(matrix).T @ nn_model.predict(counts/exposure, srm=matrix))
+            plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
         finalize_main_plot()
         if self.show_photon_var.get():
