@@ -35,9 +35,9 @@ class InputWindow:
         self.e_high = None
         self.e_low = None
         self.top1 = Toplevel()
-        self.top1.title('STIX Plotting Options')
+        self.top1.title('STIX Input Options')
         self.top1.geometry("1000x400")
-        Label(self.top1, text="Select Plotting", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
+        Label(self.top1, text="Select Input", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
                                                                                                   anchor=N)
         # Creates a window to inform user hdul is empty
         self.hdul = None

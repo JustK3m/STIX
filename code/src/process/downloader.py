@@ -2,14 +2,10 @@
 
 import os
 import threading
-from fileinput import close
 from tkinter import *
 from tkinter import messagebox, filedialog
 from tkinter.ttk import Progressbar, Combobox
 from stixdcpy.net import FitsQuery
-from stixdcpy.science import spec_fits_concatenate
-from astropy.io import fits
-import numpy as np
 
 class STIXDownloader:
     """Fenêtre tkinter pour télécharger des données STIX science via stixdcpy."""

@@ -1169,7 +1169,6 @@ class Fitting:
         def finalize_main_plot():
             plt.xscale('log')
             plt.yscale('log')
-            plt.xlim(fit_Emin, fit_Emax)
             plt.xlabel("Channel Energy (keV)")
             plt.ylabel(y_label)
             plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
@@ -1195,6 +1194,24 @@ class Fitting:
             plt.xlabel("Energy (keV)")
             plt.ylabel("Photon flux [photons / (s cm² keV)]")
             plt.title(f"Photon Flux Model using {self.statname}")
+            if self.grid_var.get():
+                plt.grid(True, which="both", ls="--", alpha=0.5)
+            plt.legend()
+            if self.show_params_var.get():
+                add_param_text(param_txt)
+            plt.tight_layout()
+
+        def plot_photon_discrete(flux_photons, param_txt, title="Photon Flux Model (Neural Network)"):
+            plt.figure()
+            plt.step(Edges_photon[:-1], flux_photons, where='post',
+                     label='Photon model', color='green')
+            xscale = getattr(self, "photon_xscale", "log")
+            yscale = getattr(self, "photon_yscale", "log")
+            plt.xscale(xscale)
+            plt.yscale(yscale)
+            plt.xlabel("Energy (keV)")
+            plt.ylabel("Photon flux [photons / (s cm² keV)]")
+            plt.title(title)
             if self.grid_var.get():
                 plt.grid(True, which="both", ls="--", alpha=0.5)
             plt.legend()
@@ -1418,6 +1435,7 @@ class Fitting:
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, 0)
 
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             param_text = (f"Power Law Cutoff Fix:\n amplitude={amplitude:.2e}\n"
@@ -1484,7 +1502,7 @@ class Fitting:
             # masque cutoff
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, 0)
-
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             param_text = (f"Power Law Cutoff Free:\n amplitude={amplitude:.2e}\n"
@@ -1559,6 +1577,8 @@ class Fitting:
             model_y = to_unit(model_display(x_fake))
             fit_mask_cutoff = (edges_det[:-1] >= fit_Emin) & (edges_det[:-1] < E_cut_val)
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
+
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted VTH Model', color='purple')
 
             param_text = (f"V_TH + Power Law Cutoff Fix:\n"
@@ -1636,6 +1656,7 @@ class Fitting:
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
 
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             fit_mask = (edges_det[:-1] >= fit_Emin) & (edges_det[1:] <= E_cut_val)
@@ -1698,11 +1719,37 @@ class Fitting:
 
         elif idx == 9:
             model_key = "Neural Network"
-            nn_model = NeuralNetModel.load("data/nn_powerlaw.pt", "cpu")
-            model_y = to_unit(np.asarray(matrix).T @ nn_model.predict(counts/exposure, srm=matrix))
+            nn_model = NeuralNetModel.load(path="data/nn_powerlaw_150k.pt", device="cpu")
+
+            photon_flux = nn_model.predict(counts, srm=matrix)
+
+            folded = (np.asarray(matrix).T @ photon_flux) / exposure
+            model_y = to_unit(folded)
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
+
+            e_true = 0.5 * (np.asarray(e_low_true) + np.asarray(e_high_true))
+
+            mask_true = (e_true >= fit_Emin) & (e_true <= fit_Emax)
+
+            valid_pl = (photon_flux > 0) & (e_true > 0) & mask_true
+            nn_alpha, nn_amplitude = np.nan, np.nan
+            if valid_pl.sum() >= 2:
+                slope, intercept = np.polyfit(
+                    np.log(e_true[valid_pl]), np.log(photon_flux[valid_pl]), 1)
+                nn_alpha = -slope
+                nn_amplitude = np.exp(intercept)
+
+            photon_flux_display = np.where(mask_true, photon_flux, np.nan)
+
+            param_text = (f"Neural Network (effective power law):\n"
+                          f" amplitude = {nn_amplitude:.2e}\n alpha = {nn_alpha:.2f}\n")
+            if self.show_params_var.get():
+                add_param_text(param_text)
 
         finalize_main_plot()
         if self.show_photon_var.get():
-            plot_photon(model_func_photon, param_text)
+            if idx == 9:
+                plot_photon_discrete(photon_flux_display, param_text)
+            else:
+                plot_photon(model_func_photon, param_text)
         plt.show()
