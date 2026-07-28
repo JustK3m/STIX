@@ -9,23 +9,21 @@ from scipy.optimize import least_squares
 
 class LevMarCstatFitter(_NonLinearLSQFitter):
     """
-    Fitter de Levenberg-Marquardt minimisant la statistique de Cash (C-stat)
-    plutôt que le chi-carré classique, adapté aux données de comptage faible
-    (régime de Poisson).
+    Levenberg-Marquardt fitter minimising the Cash statistic (C-stat)
+    rather than the classic chi-square, suited to low-count data
+    (Poisson regime).
 
     C = 2 * sum_i | M_i - D_i * ln(M_i) |
 
-    Hérite de astropy.modeling.fitting._NonLinearLSQFitter.
+    Inherits from astropy.modeling.fitting._NonLinearLSQFitter.
 
     Attributes
     ----------
-    max_iter : int
-        Nombre maximum d'itérations de l'algorithme (défaut : 500).
     fit_info : dict
-        Dictionnaire de diagnostic rempli après chaque appel :
+        Diagnostic dictionary filled after each call:
         {'nfev', 'cost', 'status', 'message', 'success'}.
     logger : logging.Logger
-        Logger interne pour les messages de convergence.
+        Internal logger for convergence messages.
     """
 
     def __init__(self, calc_uncertainties=False):
@@ -33,12 +31,12 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         Parameters
         ----------
         calc_uncertainties : bool, optional
-            Calcul des incertitudes sur les paramètres (défaut : False).
-            Transmis à la classe parente _NonLinearLSQFitter.
+            Whether to compute parameter uncertainties (default: False).
+            Passed through to the parent class _NonLinearLSQFitter.
         """
         super().__init__(calc_uncertainties)
 
-        # Configuration basique du logger (à adapter à ton projet)
+        # Basic logger configuration (adapt to your project as needed)
         logging.basicConfig(
             level=logging.INFO,
             format="%(levelname)s - %(message)s"
@@ -51,27 +49,26 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
 
     def log_fit_info(self, fit_info: dict) -> None:
         """
-        Journalise le résultat de convergence du fitter à partir du
-        dictionnaire fit_info.
+        Logs the fitter's convergence result from the fit_info dictionary.
 
         Parameters
         ----------
         fit_info : dict or None
-            Dictionnaire retourné après l'ajustement. Clés attendues :
-            - 'success' (bool) : convergence atteinte ou non.
-            - 'status' (int)   : code de retour du solveur scipy.
-            - 'message' (str)  : message textuel du solveur.
-            - 'nfev' (int)     : nombre d'évaluations de la fonction coût.
-            - 'cost' (float)   : valeur finale de C-stat / 2.
-            - 'param_cov'      : matrice de covariance (si disponible).
+            Dictionary returned after the fit. Expected keys:
+            - 'success' (bool) : whether convergence was reached.
+            - 'status' (int)   : return code from the scipy solver.
+            - 'message' (str)  : text message from the solver.
+            - 'nfev' (int)     : number of cost function evaluations.
+            - 'cost' (float)   : final value of C-stat / 2.
+            - 'param_cov'      : covariance matrix (if available).
 
         Returns
         -------
         None
-            Journalise via self.logger (INFO / WARNING / ERROR / DEBUG).
+            Logs via self.logger (INFO / WARNING / ERROR / DEBUG).
         """
         if fit_info is None:
-            self.logger.warning("Aucune information de fit (fit_info est None).")
+            self.logger.warning("No fit information available (fit_info is None).")
             return
 
         success = fit_info.get("success")
@@ -79,31 +76,31 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         message = fit_info.get("message", "")
 
         if success:
-            self.logger.info("Fit terminé avec succès.")
+            self.logger.info("Fit completed successfully.")
         elif success is False:
-            self.logger.error("Fit NON convergent.")
+            self.logger.error("Fit did NOT converge.")
         else:
-            self.logger.warning("Statut de convergence inconnu.")
+            self.logger.warning("Unknown convergence status.")
 
         if status is not None:
-            self.logger.info(f"Code de statut du solveur : {status}")
+            self.logger.info(f"Solver status code: {status}")
         if message:
-            self.logger.info(f"Message du solveur : {message}")
+            self.logger.info(f"Solver message: {message}")
         if "nfev" in fit_info:
-            self.logger.info(f"Nombre d'évaluations de la fonction : {fit_info['nfev']}")
+            self.logger.info(f"Number of function evaluations: {fit_info['nfev']}")
         if fit_info.get("param_cov") is not None:
-            self.logger.info("Matrice de covariance disponible.")
+            self.logger.info("Covariance matrix available.")
         else:
-            self.logger.info("Pas de matrice de covariance (Jacobien singulier ou fit échoué).")
+            self.logger.info("No covariance matrix (singular Jacobian or failed fit).")
 
     # ------------------------------------------------------------------
-    # Utilitaires statiques
+    # Static utilities
     # ------------------------------------------------------------------
 
     @staticmethod
     def _cstat(observed: np.ndarray, model_vals: np.ndarray) -> float:
         """
-        C-stat complète :  C = 2 * Σ( M - O + O*ln(O/M) )
+        Full C-stat:  C = 2 * Σ( M - O + O*ln(O/M) )
 
         """
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -116,7 +113,7 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
     def _cstat_residuals(observed: np.ndarray,
                          model_vals: np.ndarray) -> np.ndarray:
         """
-        Résidus signés r_i tels que Σ r_i² == C-stat.
+        Signed residuals r_i such that Σ r_i² == C-stat.
 
         r_i = sign(O_i - M_i) * sqrt( 2*(M_i - O_i + O_i*ln(O_i/M_i)) )
         """
@@ -129,20 +126,20 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         return sign * np.sqrt(inner)
 
     # ------------------------------------------------------------------
-    # Bornes (bounds)
+    # Bounds
     # ------------------------------------------------------------------
 
     @staticmethod
     def _get_bounds(model) -> tuple:
         """
-        Extrait les bornes (min/max) définies sur les paramètres libres
-        du modèle astropy.
+        Extracts the bounds (min/max) defined on the astropy model's
+        free parameters.
         """
         lower, upper = [], []
         for name in model.param_names:
             param = getattr(model, name)
             if model.fixed.get(name, False):
-                continue  # paramètre fixé : ignoré
+                continue  # fixed parameter: skipped
             lb = param.min if param.min is not None else -np.inf
             ub = param.max if param.max is not None else +np.inf
             lower.append(lb)
@@ -155,70 +152,70 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
 
     def __call__(self, model, x, y, weights=None, **kwargs):
         """
-        Lance l'ajustement du modèle en minimisant le vecteur de résidus
-        C-stat via scipy.optimize.least_squares (méthode 'lm').
+        Runs the model fit by minimising the C-stat residual vector via
+        scipy.optimize.least_squares (method 'lm').
 
-        La fonction résidu vectorisée est :
+        The vectorised residual function is:
             r_i = 2 * | M_i(theta) - D_i * ln(M_i(theta)) |
-        avec M_i clampé à 1e-12 pour éviter ln(0).
+        with M_i clamped to 1e-12 to avoid ln(0).
 
         Parameters
         ----------
         model : astropy FittableModel
-            Modèle à ajuster. Ses paramètres sont modifiés en place
-            par le fitter.
+            Model to fit. Its parameters are modified in place by the
+            fitter.
         x : array-like
-            Variable indépendante (vecteur fantôme de zéros pour les
-            modèles ForwardFolded).
+            Independent variable (dummy zero vector for ForwardFolded
+            models).
         y : array-like
-            Données observées D_i (coups s-1 ou coups selon l'unité).
+            Observed data D_i (counts s-1 or counts depending on unit).
         weights : array-like or None, optional
-            Poids appliqués au vecteur résidu. Doit avoir la même forme
-            que y. Si None, tous les points ont le même poids.
+            Weights applied to the residual vector. Must have the same
+            shape as y. If None, all points have equal weight.
         **kwargs
-            Arguments supplémentaires transmis à scipy.least_squares.
+            Extra arguments passed through to scipy.least_squares.
 
         Returns
         -------
         model : astropy FittableModel
-            Modèle avec ses paramètres mis à jour à la solution optimale.
+            Model with its parameters updated to the optimal solution.
 
         Side effects
         ------------
-        self.fit_info est mis à jour avec les métriques de convergence.
+        self.fit_info is updated with the convergence metrics.
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
 
         if np.any(y < 0):
-            raise ValueError("Les counts observés (y) doivent être ≥ 0.")
+            raise ValueError("Observed counts (y) must be ≥ 0.")
 
-        # Sauvegarde des paramètres initiaux pour restauration si besoin
+        # Save the initial parameters in case they need to be restored
         p0 = model.parameters.copy()
 
-        # Noms des paramètres libres (non fixés)
+        # Names of the free (non-fixed) parameters
         free_names = [n for n in model.param_names
                       if not model.fixed.get(n, False)]
         n_free = len(free_names)
         if n_free == 0:
-            raise ValueError("Le modèle n'a aucun paramètre libre.")
+            raise ValueError("The model has no free parameters.")
 
-        # --- Fonction résidus ----------------------------------------
+        # --- Residual function ----------------------------------------
         def residuals(p):
             model.parameters = p
-            m = np.clip(model(x), 1e-30, None)  # M > 0 requis par ln
+            m = np.clip(model(x), 1e-30, None)  # M > 0 required by ln
 
             r = LevMarCstatFitter._cstat_residuals(y, m)
 
             if weights is not None:
                 w = np.asarray(weights, dtype=float)
                 if w.shape != r.shape:
-                    raise ValueError("weights doit avoir la même forme que y.")
-                r = r * np.sqrt(w)   # pondération cohérente avec les résidus
+                    raise ValueError("weights must have the same shape as y.")
+                r = r * np.sqrt(w)   # weighting consistent with the residuals
 
             return r
 
-        # --- Bornes et méthode ---------------------------------------
+        # --- Bounds and method ---------------------------------------
         lb, ub = self._get_bounds(model)
         has_bounds = np.any(np.isfinite(lb)) or np.any(np.isfinite(ub))
         method = "trf" if has_bounds else "lm"
@@ -228,17 +225,19 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
         )
         if has_bounds:
             lm_kwargs["bounds"] = (lb, ub)
-        lm_kwargs.update(kwargs)  # override utilisateur en dernier
+        lm_kwargs.update(kwargs)  # user override takes precedence
 
         # --- Optimisation --------------------------------------------
         res = least_squares(residuals, p0, **lm_kwargs)
 
-        # Restauration du meilleur résultat dans le modèle
+        # Restore the best result into the model
         model.parameters = res.x
 
         # --- Covariance ----------------------------------------------
-        # Pour C-stat (Poisson), la matrice de covariance approchée est :
-        #   cov ≈ 2 * (J^T J)^{-1}   [facteur 2 manquant dans l'original]
+        # For C-stat (Poisson), the approximate covariance matrix is:
+        #   cov ≈ 2 * (J^T J)^{-1}
+        # (the factor of 2 comes from C-stat being 2x the log-likelihood,
+        # unlike the classic chi-square case)
         param_cov = None
         param_errors = None
         if self._calc_uncertainties and res.success:
@@ -247,8 +246,8 @@ class LevMarCstatFitter(_NonLinearLSQFitter):
                 param_cov = 2.0 * np.linalg.inv(JtJ)
                 param_errors = np.sqrt(np.diag(param_cov))
             except np.linalg.LinAlgError:
-                warnings.warn("Matrice de covariance singulière ; "
-                              "incertitudes non disponibles.")
+                warnings.warn("Singular covariance matrix; "
+                              "uncertainties unavailable.")
 
         # --- fit_info ------------------------------------------------
 

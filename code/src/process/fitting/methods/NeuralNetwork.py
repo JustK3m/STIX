@@ -1,5 +1,5 @@
 """
-NeuralNet.py — Neural network-based photon spectrum reconstruction (PyTorch).
+NeuralNetwork.py — Neural network-based photon spectrum reconstruction (PyTorch).
 
 Overview
 --------
@@ -15,7 +15,8 @@ Method
 ------
 Training data are generated on-the-fly from parametric power-law spectra:
 
-    Φ(E) = A · E^(−α)       A ∈ [1e-3, 1e2],  α ∈ [1.5, 5.0]  (log-uniform / uniform)
+    Φ(E) = A · E^(−α)       A ∈ [1e-3, 1e12],  α ∈ [1.5, 10.0]  (log-uniform / uniform,
+                                                                  train()'s defaults)
 
 Simulated counts are obtained by forward-folding through a perturbed SRM:
 
@@ -60,7 +61,7 @@ Dependencies
 
 Quick Start
 -----------
-    from process.fitting.methods.NeuralNet import NeuralNetModel
+    from process.fitting.methods.NeuralNetwork import NeuralNetModel
 
     model = NeuralNetModel("data/stx_srm_2303197888.fits")
     model.train(n_samples=10_000, n_epochs=150, batch_size=128,
@@ -76,7 +77,7 @@ Quick Start
 
 Integration in fit_all.py (idx == N)
 -------------------------------------
-    from process.fitting.methods.NeuralNet import NeuralNetModel
+    from process.fitting.methods.NeuralNetwork import NeuralNetModel
 
     model = NeuralNetModel(Fitting.rname)
     model.train()
@@ -105,27 +106,27 @@ import time
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  1. Chargement et préparation de la SRM réelle
+#  1. Loading and preparing the real SRM
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_srm(srm_path: str) -> dict:
     """
-    Charge la SRM STIX depuis un fichier FITS et retourne les tableaux utiles.
+    Loads the STIX SRM from a FITS file and returns the useful arrays.
 
     Parameters
     ----------
     srm_path : str
-        Chemin vers le fichier FITS de la SRM.
+        Path to the SRM FITS file.
 
     Returns
     -------
-    dict avec les clés :
-        'matrix'   : ndarray (n_true, n_det)  — matrice de réponse normalisée.
-        'energ_lo' : ndarray (n_true,)         — bornes inférieures énergie vraie (keV).
-        'energ_hi' : ndarray (n_true,)         — bornes supérieures énergie vraie (keV).
-        'e_min'    : ndarray (n_det,)           — bornes inférieures canaux détecteur (keV).
-        'e_max'    : ndarray (n_det,)           — bornes supérieures canaux détecteur (keV).
-        'e_true'   : ndarray (n_true,)          — centres des bins en énergie vraie (keV).
+    dict with keys:
+        'matrix'   : ndarray (n_true, n_det)  — normalised response matrix.
+        'energ_lo' : ndarray (n_true,)         — lower bounds in true energy (keV).
+        'energ_hi' : ndarray (n_true,)         — upper bounds in true energy (keV).
+        'e_min'    : ndarray (n_det,)           — lower bounds of detector channels (keV).
+        'e_max'    : ndarray (n_det,)           — upper bounds of detector channels (keV).
+        'e_true'   : ndarray (n_true,)          — centres of the true-energy bins (keV).
     """
     with fits.open(srm_path) as hdul:
         hdu_m = hdul[1]
@@ -150,7 +151,7 @@ def load_srm(srm_path: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  2. Génération de SRM synthétiques physiquement réalistes
+#  2. Generating physically realistic synthetic SRMs
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _generate_synthetic_srm_batch(srm_ref: np.ndarray,
@@ -159,12 +160,12 @@ def _generate_synthetic_srm_batch(srm_ref: np.ndarray,
                                    smooth_sigma: float,
                                    rng: np.random.Generator) -> np.ndarray:
     """
-    Version vectorisée de generate_synthetic_srm pour un batch entier.
+    Vectorised version of generate_synthetic_srm for an entire batch.
 
-    Génère n_batch SRM synthétiques d'un coup, sans boucle Python :
-    le bruit multiplicatif est tiré pour tout le batch en une fois, et le
-    lissage gaussien est appliqué sur tout le tableau (n_batch, n_true, n_det)
-    d'un seul appel scipy (axis=1), au lieu d'un appel par canal et par sample.
+    Generates n_batch synthetic SRMs at once, with no Python loop:
+    the multiplicative noise is drawn for the whole batch in one go, and the
+    Gaussian smoothing is applied to the whole array (n_batch, n_true, n_det)
+    in a single scipy call (axis=1), instead of one call per channel and per sample.
 
     Returns
     -------
@@ -176,18 +177,18 @@ def _generate_synthetic_srm_batch(srm_ref: np.ndarray,
                             size=(n_batch, n_true, n_det)).astype(np.float32)
     srm_syn = srm_ref[np.newaxis, :, :] * np.exp(log_noise)   # (n_batch, n_true, n_det)
 
-    # Lissage gaussien le long de l'axe énergie vraie (axis=1), pour tout
-    # le batch et tous les canaux détecteur en un seul appel
+    # Gaussian smoothing along the true-energy axis (axis=1), for the whole
+    # batch and all detector channels in a single call
     srm_syn = gaussian_filter1d(srm_syn, sigma=smooth_sigma, axis=1)
 
-    # Restauration du masque de zéros (broadcast sur le batch)
+    # Restore the zero mask (broadcast over the batch)
     srm_syn[:, srm_ref == 0.0] = 0.0
     np.clip(srm_syn, 0.0, None, out=srm_syn)
 
     return srm_syn
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  3. Génération des données d'entraînement (loi de puissance)
+#  3. Generating the training data (power law)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generate_power_law_dataset(n_samples: int,
@@ -200,14 +201,14 @@ def generate_power_law_dataset(n_samples: int,
                                rng: np.random.Generator = None,
                                chunk_size: int = 2000) -> tuple:
     """
-    Génère N paires (counts, photons) simulées sous loi de puissance —
-    version vectorisée par chunks (même signature et même sortie que
-    la version originale, mais sans boucle Python par échantillon).
+    Generates N simulated (counts, photons) pairs under a power law —
+    chunk-vectorised version (same signature and same output as the
+    original version, but with no per-sample Python loop).
 
     chunk_size : int
-        Taille des lots traités d'un coup. Un compromis vitesse/mémoire :
-        plus grand = plus rapide mais plus de RAM utilisée simultanément.
-        À ajuster selon ta machine (2000 est un bon point de départ pour
+        Size of the batches processed at once. A speed/memory trade-off:
+        larger = faster but more RAM used at once.
+        Adjust to your machine (2000 is a good starting point for
         n_true=1028, n_det=30).
     """
     if rng is None:
@@ -228,18 +229,18 @@ def generate_power_law_dataset(n_samples: int,
         end     = min(start + chunk_size, n_samples)
         n_batch = end - start
 
-        # ── Tirage vectorisé des paramètres (A, alpha) ──────────────────
+        # ── Vectorised draw of parameters (A, alpha) ──────────────────
         A     = 10 ** rng.uniform(log_amp_lo, log_amp_hi, size=n_batch)
         alpha = rng.uniform(alpha_range[0], alpha_range[1], size=n_batch)
 
-        # phi_batch : (n_batch, n_true) — broadcast sur e_true
+        # phi_batch : (n_batch, n_true) — broadcast over e_true
         phi_batch = (A[:, None] * e_true[None, :] ** (-alpha[:, None])).astype(np.float32)
 
-        # ── SRM synthétiques vectorisées ─────────────────────────────────
+        # ── Vectorised synthetic SRMs ─────────────────────────────────
         srm_batch = _generate_synthetic_srm_batch(
             srm_ref, n_batch, noise_level_srm, smooth_sigma=1.0, rng=rng)  # (n_batch, n_true, n_det)
 
-        # ── Projection counts = SRM.T @ phi, vectorisée (einsum) ────────
+        # ── Projection counts = SRM.T @ phi, vectorised (einsum) ────────
         counts_batch = np.einsum('nij,ni->nj', srm_batch, phi_batch)
 
         if poisson_noise:
@@ -253,42 +254,42 @@ def generate_power_law_dataset(n_samples: int,
     return counts_all, photons_all, params_all, srms_all
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  4. Architecture du réseau de neurones
+#  4. Neural network architecture
 # ══════════════════════════════════════════════════════════════════════════════
 
 class PhotonMLP(nn.Module):
     """
-    Réseau de neurones dual-branch pour la reconstruction du spectre photonique.
+    Dual-branch neural network for photon spectrum reconstruction.
 
-    Architecture :
+    Architecture:
         counts (n_det)         ──────────────────────────────────────────────┐
                                                                               cat → MLP → Softplus → Φ (n_true)
         SRM (n_true * n_det)   → Linear(srm_dim) → LayerNorm → ReLU ────────┘
 
-    Les deux entrées sont traitées séparément avant fusion :
-      - Branch counts : vecteur brut de n_det valeurs (déjà normalisé).
-      - Branch SRM    : encodeur linéaire qui compresse la SRM aplatie
-                        (n_true * n_det ≈ 30 840 dims) en un embedding de
-                        srm_dim (défaut 64) avant la concaténation.
-                        Sans cet encodeur, les counts (n_det = 30) ne
-                        représentent que 0.1 % de l'entrée et leur signal
-                        gradient est noyé par la SRM.
+    The two inputs are processed separately before fusion:
+      - Counts branch : raw vector of n_det values (already normalised).
+      - SRM branch    : linear encoder that compresses the flattened SRM
+                        (n_true * n_det ≈ 30 840 dims) into an embedding of
+                        srm_dim (default 64) before concatenation.
+                        Without this encoder, the counts (n_det = 30) would
+                        only represent 0.1% of the input and their gradient
+                        signal would be drowned out by the SRM.
 
-    MLP body : hidden_dims couches [BN → ReLU → Dropout].
-    Sortie   : Softplus → positivité garantie.
+    MLP body : hidden_dims layers [BN → ReLU → Dropout].
+    Output   : Softplus → guaranteed positivity.
 
     Parameters
     ----------
     n_det : int
-        Nombre de canaux détecteur mesurés.
+        Number of measured detector channels.
     n_true : int
-        Nombre de bins en énergie vraie (dimension de sortie).
+        Number of true-energy bins (output dimension).
     hidden_dims : list of int
-        Taille des couches cachées du MLP (défaut : [256, 512, 256]).
+        Size of the MLP hidden layers (default: [256, 512, 256]).
     dropout : float
-        Taux de dropout (défaut : 0.1).
+        Dropout rate (default: 0.1).
     srm_dim : int
-        Dimension de l'embedding SRM produit par l'encodeur (défaut : 64).
+        Dimension of the SRM embedding produced by the encoder (default: 64).
     """
 
     def __init__(self,
@@ -304,14 +305,14 @@ class PhotonMLP(nn.Module):
 
         self.n_det = n_det
 
-        # ── Branch SRM : compresse n_true*n_det → srm_dim ─────────────────
+        # ── SRM branch: compresses n_true*n_det → srm_dim ─────────────────
         self.srm_encoder = nn.Sequential(
             nn.Linear(n_true * n_det, srm_dim),
             nn.LayerNorm(srm_dim),
             nn.ReLU(),
         )
 
-        # ── MLP principal : fusionne counts + embedding SRM ────────────────
+        # ── Main MLP: fuses counts + SRM embedding ────────────────
         layers = []
         in_dim = n_det + srm_dim
         for h in hidden_dims:
@@ -335,12 +336,12 @@ class PhotonMLP(nn.Module):
         Parameters
         ----------
         x : Tensor (batch_size, n_det + n_true*n_det)
-            Concaténation des counts normalisés et de la SRM aplatie normalisée.
+            Concatenation of the normalised counts and the normalised flattened SRM.
 
         Returns
         -------
         Tensor (batch_size, n_true)
-            Spectre photonique reconstruit (valeurs > 0).
+            Reconstructed photon spectrum (values > 0).
         """
         counts   = x[:, :self.n_det]
         srm_flat = x[:, self.n_det:]
@@ -355,17 +356,17 @@ class PhotonMLP(nn.Module):
 
 class LogStandardScaler:
     """
-    Normalisation log1p + standardisation (μ=0, σ=1).
+    log1p normalisation + standardisation (μ=0, σ=1).
 
-    log1p est utilisé plutôt que log pour être robuste aux zéros
-    (fréquents dans les spectres à haute énergie ou faible signal).
+    log1p is used instead of log to be robust to zeros
+    (common in high-energy or low-signal spectra).
 
     Attributes
     ----------
     mean_ : ndarray
-        Moyenne calculée sur les données d'entraînement après log1p.
+        Mean computed on the training data after log1p.
     std_ : ndarray
-        Écart-type calculé sur les données d'entraînement après log1p.
+        Standard deviation computed on the training data after log1p.
     """
 
     def __init__(self):
@@ -382,20 +383,20 @@ class LogStandardScaler:
                        min_samples: int = 500,
                        rng: np.random.Generator = None) -> 'LogStandardScaler':
         """
-        Fit sur un sous-échantillon aléatoire de X plutôt que sur X entier.
+        Fits on a random subsample of X rather than on all of X.
 
-        Utile pour les tableaux énormes (ex. SRM aplatie) où la statistique
-        (mean/std) converge bien avant d'avoir vu toutes les lignes.
+        Useful for huge arrays (e.g. flattened SRM) where the statistic
+        (mean/std) converges well before every row has been seen.
 
         Parameters
         ----------
         subsample_frac : float
-            Fraction de X à utiliser pour le fit (défaut : 5%).
+            Fraction of X to use for the fit (default: 5%).
         min_samples : int
-            Plancher minimal d'échantillons, pour garder une estimation
-            stable même quand X est petit ou subsample_frac très bas
-            (défaut : 500). Si X compte moins de lignes que ce plancher,
-            on utilise X entier.
+            Minimum sample floor, to keep the estimate stable even when
+            X is small or subsample_frac is very low
+            (default: 500). If X has fewer rows than this floor,
+            all of X is used.
         rng : np.random.Generator or None
         """
         n     = X.shape[0]
@@ -413,26 +414,26 @@ class LogStandardScaler:
         return ((log_X - self.mean_) / self.std_).astype(np.float32)
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
-        """Fit + transform en un seul passage sur log1p(X) (au lieu de deux)."""
+        """Fit + transform in a single pass over log1p(X) (instead of two)."""
         log_X      = np.log1p(np.maximum(X, 0))
         self.mean_ = log_X.mean(axis=0)
         self.std_  = log_X.std(axis=0) + 1e-8
         return ((log_X - self.mean_) / self.std_).astype(np.float32)
 
     def inverse_transform_output(self, Y_norm: np.ndarray) -> np.ndarray:
-        """Inverse pour la sortie (spectre photonique)."""
+        """Inverse for the output (photon spectrum)."""
         return np.expm1(Y_norm * self.std_ + self.mean_)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  6. Classe principale — entraînement et inférence
+#  6. Main class — training and inference
 # ══════════════════════════════════════════════════════════════════════════════
 
 class NeuralNetModel:
     """
-    Interface principale pour la reconstruction NN du spectre photonique.
+    Main interface for NN-based photon spectrum reconstruction.
 
-    Workflow :
+    Workflow:
         model = NeuralNetModel("data/stx_srm_2303197888.fits")
         model.train(n_samples=10000, n_epochs=150)
         photons = model.predict(counts_vector)
@@ -440,28 +441,32 @@ class NeuralNetModel:
     Parameters
     ----------
     srm_path : str
-        Chemin vers le fichier FITS de la SRM de référence.
+        Path to the reference SRM FITS file.
     hidden_dims : list of int, optional
-        Architecture des couches cachées du MLP.
+        Architecture of the MLP hidden layers.
     dropout : float, optional
-        Taux de dropout (défaut : 0.1).
+        Dropout rate (default: 0.1).
+    srm_dim : int, optional
+        Dimension of the SRM embedding produced by the encoder (default: 64).
     device : str or None, optional
-        'cpu', 'cuda', ou None pour détection automatique.
+        'cpu', 'cuda', or None for automatic detection.
 
     Attributes
     ----------
     srm_data : dict
-        Données SRM chargées (matrix, e_true, e_min, e_max, ...).
+        Loaded SRM data (matrix, e_true, e_min, e_max, ...).
     net : PhotonMLP
-        Réseau de neurones PyTorch.
+        PyTorch neural network.
     scaler_X : LogStandardScaler
-        Normalisateur des counts (entrée).
+        Normaliser for the counts (input).
+    scaler_S : LogStandardScaler
+        Normaliser for the flattened SRM.
     scaler_Y : LogStandardScaler
-        Normalisateur des photons (sortie).
+        Normaliser for the photons (output).
     is_trained : bool
-        True si le modèle a été entraîné.
+        True if the model has been trained.
     train_history : list of float
-        Historique de la loss MSE par époque.
+        History of the MSE loss per epoch.
     """
 
     def __init__(self,
@@ -483,9 +488,9 @@ class NeuralNetModel:
         n_det  = self.srm_data['matrix'].shape[1]
         n_true = self.srm_data['matrix'].shape[0]
 
-        # Scalers séparés : counts, SRM aplatie, photons
+        # Separate scalers: counts, flattened SRM, photons
         self.scaler_X     = LogStandardScaler()   # counts (n_det,)
-        self.scaler_S     = LogStandardScaler()   # SRM aplatie (n_true*n_det,)
+        self.scaler_S     = LogStandardScaler()   # flattened SRM (n_true*n_det,)
         self.scaler_Y     = LogStandardScaler()   # photons (n_true,)
 
         self.net = PhotonMLP(n_det, n_true, self.hidden_dims, self.dropout, self.srm_dim)
@@ -516,46 +521,48 @@ class NeuralNetModel:
               patience:        int   = 20,
               min_delta:       float = 1e-6) -> None:
         """
-        Génère les données simulées et entraîne le réseau.
+        Generates the simulated data and trains the network.
 
-        Sauvegarde automatiquement les poids du meilleur modèle (val_loss
-        minimale) en mémoire, et arrête l'entraînement prématurément si la
-        val_loss ne s'améliore pas de plus de `min_delta` pendant `patience`
-        époques consécutives (early stopping).
+        Automatically saves the weights of the best model (minimal
+        val_loss) in memory, and stops training early if the val_loss
+        does not improve by more than `min_delta` for `patience`
+        consecutive epochs (early stopping).
 
         Parameters
         ----------
         n_samples : int
-            Nombre de spectres simulés pour l'entraînement (défaut : 10 000).
+            Number of simulated spectra for training (default: 10,000).
         n_epochs : int
-            Nombre maximal d'époques (défaut : 150).
+            Maximum number of epochs (default: 150).
         batch_size : int
-            Taille des mini-batchs (défaut : 128).
+            Mini-batch size (default: 128).
         lr : float
-            Taux d'apprentissage initial Adam (défaut : 1e-3).
+            Initial Adam learning rate (default: 1e-3).
         weight_decay : float
-            Régularisation L2 sur les poids (défaut : 1e-5).
+            L2 weight regularisation (default: 1e-5).
         alpha_range : tuple
-            Intervalle de l'indice spectral α.
+            Range of the spectral index α.
         amp_range : tuple
-            Intervalle log-uniforme de l'amplitude A.
+            Log-uniform range of the amplitude A.
         noise_level_srm : float
-            Bruit relatif sur les SRM synthétiques (défaut : 5%).
+            Relative noise on the synthetic SRMs (default: 20%).
         poisson_noise : bool
-            Ajout d'un bruit de Poisson sur les counts simulés.
+            Whether to add Poisson noise to the simulated counts.
         val_frac : float
-            Fraction de validation (défaut : 10%).
+            Validation fraction (default: 20%).
+        test_frac : float
+            Test fraction (default: 10%).
         seed : int
-            Graine aléatoire pour la reproductibilité.
+            Random seed for reproducibility.
         verbose : bool
-            Affichage de la progression.
+            Whether to display progress.
         patience : int
-            Nombre d'époques sans amélioration avant arrêt anticipé
-            (défaut : 20). Mettre à None pour désactiver l'early stopping.
+            Number of epochs without improvement before early stopping
+            (default: 20). Set to None to disable early stopping.
         min_delta : float
-            Amélioration minimale de la val_loss considérée comme un progrès
-            (défaut : 1e-6). En dessous de ce seuil, l'époque est comptée
-            comme une stagnation.
+            Minimum val_loss improvement considered as progress
+            (default: 1e-6). Below this threshold, the epoch is counted
+            as stagnation.
         """
         import copy
 
@@ -566,9 +573,9 @@ class NeuralNetModel:
         e_true  = self.srm_data['e_true']
 
         start = time.time()
-        # ── Génération des données ─────────────────────────────────────────
+        # ── Data generation ─────────────────────────────────────────
         if verbose:
-            print(f"[Train] Génération de {n_samples} spectres simulés...")
+            print(f"[Train] Generating {n_samples} simulated spectra...")
 
         counts_all, photons_all, params_all, srms_all = generate_power_law_dataset(
             n_samples       = n_samples,
@@ -581,9 +588,9 @@ class NeuralNetModel:
             rng             = rng,
         )
 
-        # ── Split train / validation / test (70 / 20 / 10) ───────────────────
+        # ── Train / validation / test split (70 / 20 / 10) ───────────────────
         if verbose:
-            print(f"[Train] Split train / validation / test")
+            print(f"[Train] Splitting train / validation / test")
 
         n_test  = int(n_samples * test_frac)
         n_val   = int(n_samples * val_frac)
@@ -607,7 +614,7 @@ class NeuralNetModel:
 
         # ── Normalisation ──────────────────────────────────────────────────
         if verbose:
-            print(f"[Train] Normalisation...")
+            print(f"[Train] Normalising...")
         X_train_n = self.scaler_X.fit_transform(X_train)
         X_val_n = self.scaler_X.transform(X_val)
         self.scaler_S.fit_subsample(S_train, subsample_frac=0.05, rng=rng)
@@ -616,13 +623,13 @@ class NeuralNetModel:
         Y_train_n = self.scaler_Y.fit_transform(Y_train)
         Y_val_n = self.scaler_Y.transform(Y_val)
 
-        # Concaténation counts + SRM aplatie → entrée du réseau
+        # Concatenate counts + flattened SRM → network input
         XS_train_n = np.concatenate([X_train_n, S_train_n], axis=1)
         XS_val_n   = np.concatenate([X_val_n,   S_val_n],   axis=1)
 
         # ── DataLoaders ────────────────────────────────────────────────────
         if verbose:
-            print(f"[Train] Création des data loaders...")
+            print(f"[Train] Creating data loaders...")
         def to_loader(XS, Y, shuffle):
             ds = TensorDataset(
                 torch.tensor(XS, dtype=torch.float32),
@@ -633,40 +640,40 @@ class NeuralNetModel:
         loader_train = to_loader(XS_train_n, Y_train_n, shuffle=True)
         loader_val   = to_loader(XS_val_n,   Y_val_n,   shuffle=False)
 
-        # ── Optimiseur + scheduler ─────────────────────────────────────────
+        # ── Optimizer + scheduler ─────────────────────────────────────────
         if verbose:
-            print(f"[Train] Optimaseur et scheduler...")
+            print(f"[Train] Optimizer and scheduler...")
         optimizer = optim.Adam(
             self.net.parameters(), lr=lr, weight_decay=weight_decay)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=n_epochs, eta_min=lr * 0.01)
         loss_fn = nn.MSELoss()
 
-        # ── État early stopping & best checkpoint ──────────────────────────
+        # ── Early stopping state & best checkpoint ──────────────────────────
         best_val_loss   = float('inf')
         best_epoch      = 0
-        best_state_dict = None          # poids du meilleur modèle (en mémoire)
-        stagnation      = 0             # compteur d'époques sans progrès
+        best_state_dict = None          # weights of the best model (in memory)
+        stagnation      = 0             # counter of epochs without progress
 
         elapsed = time.time() - start
         hours, rem = divmod(elapsed, 3600)
         minutes, seconds = divmod(rem, 60)
 
-        print(f"[Train] Génération des données. Execution time: {int(hours):02}:{int(minutes):02}:{seconds:05.2f}")
+        print(f"[Train] Data generation. Execution time: {int(hours):02}:{int(minutes):02}:{seconds:05.2f}")
 
 
-        # ── Boucle d'entraînement ──────────────────────────────────────────
+        # ── Training loop ──────────────────────────────────────────
         self.train_history = []
         self.val_history   = []
         self.lr_history    = []
         if verbose:
             es_info = (f"patience={patience}, min_delta={min_delta:.0e}"
-                       if patience else "early stopping désactivé")
-            print(f"[Train] Démarrage — {n_epochs} époques max | "
+                       if patience else "early stopping disabled")
+            print(f"[Train] Starting — {n_epochs} max epochs | "
                   f"device={self.device} | lr={lr} | {es_info}")
 
         for epoch in range(1, n_epochs + 1):
-            # ── Passe d'entraînement ───────────────────────────────────────
+            # ── Training pass ───────────────────────────────────────
             self.net.train()
             train_loss = 0.0
             for xb, yb in loader_train:
@@ -679,7 +686,7 @@ class NeuralNetModel:
                 train_loss += loss.item() * len(xb)
             train_loss /= n_train
 
-            # ── Passe de validation ────────────────────────────────────────
+            # ── Validation pass ────────────────────────────────────────
             self.net.eval()
             val_loss = 0.0
             with torch.no_grad():
@@ -701,28 +708,28 @@ class NeuralNetModel:
                 best_epoch      = epoch
                 best_state_dict = copy.deepcopy(self.net.state_dict())
                 stagnation      = 0
-                tag = ' ★'          # marqueur visuel d'amélioration
+                tag = ' ★'          # visual improvement marker
             else:
                 stagnation += 1
                 tag = f' ({stagnation}/{patience})' if patience else ''
 
             if verbose and (epoch % 10 == 0 or epoch == 1 or improved):
-                print(f"  Époque {epoch:4d}/{n_epochs} | "
+                print(f"  Epoch {epoch:4d}/{n_epochs} | "
                       f"train={train_loss:.4e} | val={val_loss:.4e}{tag}")
 
             # ── Early stopping ─────────────────────────────────────────────
             if patience and stagnation >= patience:
                 if verbose:
-                    print(f"\n[Train] Early stopping déclenché à l'époque {epoch} "
-                          f"(pas d'amélioration depuis {patience} époques).")
+                    print(f"\n[Train] Early stopping triggered at epoch {epoch} "
+                          f"(no improvement for {patience} epochs).")
                 break
 
-        # ── Restauration du meilleur état ──────────────────────────────────
+        # ── Restoring the best state ──────────────────────────────────
         if best_state_dict is not None:
             self.net.load_state_dict(best_state_dict)
             if verbose:
-                print(f"[Train] Meilleur modèle restauré → "
-                      f"époque {best_epoch} | val_loss={best_val_loss:.4e}")
+                print(f"[Train] Best model restored → "
+                      f"epoch {best_epoch} | val_loss={best_val_loss:.4e}")
 
         self.best_epoch    = best_epoch
         self.best_val_loss = best_val_loss
@@ -732,35 +739,35 @@ class NeuralNetModel:
         self.S_test        = S_test
         self.P_test        = P_test
         if verbose:
-            print("[Train] Entraînement terminé.")
+            print("[Train] Training complete.")
 
     def predict(self, counts: np.ndarray,
                 srm: np.ndarray = None) -> np.ndarray:
         """
-        Reconstruit le spectre photonique à partir d'un vecteur de counts
-        et de la SRM associée.
+        Reconstructs the photon spectrum from a counts vector and its
+        associated SRM.
 
         Parameters
         ----------
         counts : ndarray (n_det,) or (N, n_det)
-            Counts observés par le détecteur.
+            Counts observed by the detector.
         srm : ndarray (n_true, n_det) or (N, n_true, n_det), optional
-            Matrice de réponse instrumentale utilisée pour l'acquisition.
-            Si None, utilise la SRM de référence chargée depuis le fichier FITS.
+            Instrument response matrix used for the acquisition.
+            If None, uses the reference SRM loaded from the FITS file.
 
         Returns
         -------
         ndarray (n_true,) or (N, n_true)
-            Spectre photonique reconstruit [photons cm-2 s-1 keV-1].
+            Reconstructed photon spectrum [photons cm-2 s-1 keV-1].
 
         Raises
         ------
         RuntimeError
-            Si le modèle n'a pas encore été entraîné.
+            If the model has not been trained yet.
         """
         if not self.is_trained:
             raise RuntimeError(
-                "Le modèle n'est pas entraîné. Appeler .train() d'abord.")
+                "The model is not trained. Call .train() first.")
 
         single = counts.ndim == 1
         if single:
@@ -768,18 +775,18 @@ class NeuralNetModel:
 
         N = counts.shape[0]
 
-        # ── Préparation de la SRM ─────────────────────────────────────────
+        # ── Preparing the SRM ─────────────────────────────────────────
         if srm is None:
-            # Utilise la SRM de référence pour tous les échantillons
+            # Use the reference SRM for all samples
             srm_flat = self.srm_data['matrix'].ravel()[np.newaxis, :]  # (1, n_true*n_det)
             srm_flat = np.repeat(srm_flat, N, axis=0)                  # (N, n_true*n_det)
         else:
             if srm.ndim == 2:
-                # Une seule SRM (n_true, n_det) → répliquer pour chaque sample
+                # Single SRM (n_true, n_det) → replicate for each sample
                 srm_flat = srm.ravel()[np.newaxis, :]
                 srm_flat = np.repeat(srm_flat, N, axis=0)
             else:
-                # Batch de SRM (N, n_true, n_det)
+                # Batch of SRMs (N, n_true, n_det)
                 srm_flat = srm.reshape(N, -1)
 
         srm_flat = srm_flat.astype(np.float32)
@@ -795,20 +802,23 @@ class NeuralNetModel:
         with torch.no_grad():
             Y_n = self.net(X_t).cpu().numpy()
 
-        # Dénormalisation
+        # Denormalisation
         photons = self.scaler_Y.inverse_transform_output(Y_n)
 
         return photons[0] if single else photons
 
     def save(self, path: str, srm_path: str) -> None:
         """
-        Sauvegarde le modèle entraîné (poids + scalers + historique + jeu de
-        test) sur disque.
+        Saves the trained model (weights + scalers + history + test set)
+        to disk.
 
         Parameters
         ----------
         path : str
-            Chemin du fichier de sauvegarde (.pt recommandé).
+            Path of the save file (.pt recommended).
+        srm_path : str
+            Path of the reference SRM FITS file, stored in the checkpoint
+            so .load() can reload the matching SRM.
         """
         torch.save({
             'state_dict': self.net.state_dict(),
@@ -826,36 +836,36 @@ class NeuralNetModel:
             'best_epoch': getattr(self, 'best_epoch', None),
             'best_val_loss': getattr(self, 'best_val_loss', None),
             'srm_dim': getattr(self, 'srm_dim', 64),
-            # ── Ajouts : historique d'entraînement ──────────────────────────
+            # ── Additions: training history ──────────────────────────
             'train_history': getattr(self, 'train_history', []),
             'val_history': getattr(self, 'val_history', []),
             'lr_history': getattr(self, 'lr_history', []),
-            # ── Ajouts : jeu de test (pour les plots sans réentraîner) ──────
+            # ── Additions: test set (for plots without retraining) ──────
             'X_test': getattr(self, 'X_test', None),
             'Y_test': getattr(self, 'Y_test', None),
             'S_test': getattr(self, 'S_test', None),
             'P_test': getattr(self, 'P_test', None),
         }, path)
-        print(f"[NeuralNetModel] Modèle sauvegardé → {path}")
+        print(f"[NeuralNetModel] Model saved → {path}")
 
 
     @classmethod
     def load(cls, path: str, device: str = None) -> 'NeuralNetModel':
         """
-        Charge un modèle précédemment sauvegardé, avec son historique
-        d'entraînement et son jeu de test (si présents dans le checkpoint).
+        Loads a previously saved model, along with its training history
+        and test set (if present in the checkpoint).
 
         Parameters
         ----------
         path : str
-            Chemin du fichier .pt généré par .save().
+            Path of the .pt file generated by .save().
         device : str or None
-            Forcer un device spécifique ('cpu', 'cuda').
+            Force a specific device ('cpu', 'cuda').
 
         Returns
         -------
         NeuralNetModel
-            Instance prête pour .predict() et pour les plots de diagnostic.
+            Instance ready for .predict() and for diagnostic plots.
         """
         ckpt = torch.load(path, map_location='cpu', weights_only=False)
 
@@ -890,18 +900,18 @@ class NeuralNetModel:
         instance.best_epoch = ckpt.get('best_epoch', None)
         instance.best_val_loss = ckpt.get('best_val_loss', None)
 
-        # ── Restauration : historique d'entraînement ─────────────────────────
+        # ── Restoring: training history ─────────────────────────────────────
         instance.train_history = ckpt.get('train_history', [])
         instance.val_history = ckpt.get('val_history', [])
         instance.lr_history = ckpt.get('lr_history', [])
 
-        # ── Restauration : jeu de test ────────────────────────────────────────
+        # ── Restoring: test set ────────────────────────────────────────
         instance.X_test = ckpt.get('X_test', None)
         instance.Y_test = ckpt.get('Y_test', None)
         instance.S_test = ckpt.get('S_test', None)
         instance.P_test = ckpt.get('P_test', None)
 
-        print(f"[NeuralNetModel] Modèle chargé depuis {path} | device={instance.device}")
+        print(f"[NeuralNetModel] Model loaded from {path} | device={instance.device}")
         return instance
 
 if __name__ == "__main__":

@@ -2,32 +2,31 @@ import numpy as np
 from astropy.modeling import FittableModel, Parameter
 
 
-# function to calculate the flux
 def integrate_flux(e1, e2, model_func, n_points=10):
     """
-    Calcule le flux photonique moyen d'un modèle sur un bin en énergie
-    par la méthode des trapèzes.
+    Computes the average photon flux of a model over an energy bin
+    using the trapezoidal method.
 
     Parameters
     ----------
     e1 : float
-        Borne inférieure du bin en énergie (keV).
+        Lower bound of the energy bin (keV).
     e2 : float
-        Borne supérieure du bin en énergie (keV).
+        Upper bound of the energy bin (keV).
     model_func : callable
-        Fonction du flux photonique : E -> Phi(E)
+        Photon flux function: E -> Phi(E)
         [photons cm-2 s-1 keV-1].
     n_points : int, optional
-        Nombre de points de quadrature (défaut : 10).
+        Number of quadrature points (default: 10).
 
     Returns
     -------
     float
-        Flux moyen sur le bin [photons cm-2 s-1 keV-1],
-        soit trapz(Phi, E) / (e2 - e1).
+        Average flux over the bin [photons cm-2 s-1 keV-1],
+        i.e. trapz(Phi, E) / (e2 - e1).
     """
     if e1 >= e2:
-        raise ValueError(f"e1 ({e1}) doit être strictement < e2 ({e2})")
+        raise ValueError(f"e1 ({e1}) must be strictly < e2 ({e2})")
 
     energies = np.linspace(e1, e2, n_points)
     fluxes = model_func(energies)
@@ -39,35 +38,35 @@ def integrate_flux(e1, e2, model_func, n_points=10):
 # ══════════════════════════════════════════════════════════
 class PowerLaw(FittableModel):
     """
-    Loi de puissance simple convoluée par la SRM.
+    Simple power law convolved with the SRM.
 
     Phi(E) = amplitude * (E / E_pivot)^(-alpha)
 
     Parameters (astropy)
     --------------------
-    amplitude : float, défaut 1e-2
-        Normalisation du flux à l'énergie pivot
+    amplitude : float, default 1e-2
+        Flux normalisation at the pivot energy
         [photons cm-2 s-1 keV-1].
-    alpha : float, défaut 2.0
-        Indice spectral (sans dimension).
+    alpha : float, default 2.0
+        Spectral index (dimensionless).
 
     Parameters (__init__)
     ---------------------
     e_low_true : array-like
-        Bornes inférieures des bins en énergie vraie (keV), shape (N,).
+        Lower bounds of the true-energy bins (keV), shape (N,).
     e_high_true : array-like
-        Bornes supérieures des bins en énergie vraie (keV), shape (N,).
+        Upper bounds of the true-energy bins (keV), shape (N,).
     matrix : ndarray
-        Matrice de réponse instrumentale SRM, shape (N, M).
+        Instrument response matrix (SRM), shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
     E_pivot : float, optional
-        Énergie pivot (keV), défaut 100.0.
+        Pivot energy (keV), default 100.0.
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé par canal mesuré [coups s-1].
+        Modelled count rate per measured channel [counts s-1].
     """
 
     n_inputs = 1
@@ -85,11 +84,11 @@ class PowerLaw(FittableModel):
         self.matrix = matrix
 
         if float(exposure) <= 0:
-            raise ValueError(f"exposure doit être > 0, reçu : {exposure}")
+            raise ValueError(f"exposure must be > 0, got: {exposure}")
         self.exposure = float(exposure)
 
         if float(E_pivot) <= 0:
-            raise ValueError(f"E_pivot doit être > 0, reçu : {E_pivot}")
+            raise ValueError(f"E_pivot must be > 0, got: {E_pivot}")
         self.E_pivot = float(E_pivot)
 
     def evaluate(self, x, amplitude, alpha):
@@ -115,35 +114,35 @@ class PowerLaw(FittableModel):
 # ══════════════════════════════════════════════════════════
 class BrokenPowerLaw(FittableModel):
     """
-    Loi de puissance brisée convoluée par la SRM.
+    Broken power law convolved with the SRM.
 
-    Phi(E) = amplitude * (E/E_break)^(-alpha_1)  si E < E_break
-           = amplitude * (E/E_break)^(-alpha_2)  si E >= E_break
+    Phi(E) = amplitude * (E/E_break)^(-alpha_1)  if E < E_break
+           = amplitude * (E/E_break)^(-alpha_2)  if E >= E_break
 
     Parameters (astropy)
     --------------------
-    amplitude : float, défaut 1e-2
-        Normalisation à l'énergie de cassure [photons cm-2 s-1 keV-1].
-    E_break : float, défaut 10.0
-        Énergie de cassure (keV).
-    alpha_1 : float, défaut 2.0
-        Indice spectral sous E_break.
-    alpha_2 : float, défaut 3.0
-        Indice spectral au-dessus de E_break.
+    amplitude : float, default 1e-2
+        Normalisation at the break energy [photons cm-2 s-1 keV-1].
+    E_break : float, default 10.0
+        Break energy (keV).
+    alpha_1 : float, default 2.0
+        Spectral index below E_break.
+    alpha_2 : float, default 3.0
+        Spectral index above E_break.
 
     Parameters (__init__)
     ---------------------
     e_low_true, e_high_true : array-like
-        Bornes des bins en énergie vraie (keV).
+        Bounds of the true-energy bins (keV).
     matrix : ndarray
         SRM, shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé [coups s-1].
+        Modelled count rate [counts s-1].
     """
     n_inputs = 1
     n_outputs = 1
@@ -177,42 +176,39 @@ class BrokenPowerLaw(FittableModel):
 # ══════════════════════════════════════════════════════════
 class VTH(FittableModel):
     """
-    Bremsstrahlung thermique optiquement mince (Variable Thermal),
-    convolué par la SRM.
+    Optically thin thermal bremsstrahlung (Variable Thermal),
+    convolved with the SRM.
 
     Phi(E) = (A_ff * EM) / (E * sqrt(T)) * exp(-E / T)
-    avec A_ff = 1.07e-42 * g_ff, g_ff = 1.2 (facteur de Gaunt moyen).
+    with A_ff = 1.07e-42 * g_ff, g_ff = 1.2 (mean Gaunt factor).
 
     Parameters (astropy)
     --------------------
-    EM : float, défaut 1e48, bornes [1e44, 1e52]
-        Mesure d'émission (cm-3), EM = integral(ne^2 dV).
-    T : float, défaut 1.0, bornes [0.1, 50.0]
-        Température du plasma (keV).
+    EM : float, default 1e48, bounds [1e44, 1e52]
+        Emission measure (cm-3), EM = integral(ne^2 dV).
+    T : float, default 1.0, bounds [0.1, 50.0]
+        Plasma temperature (keV).
 
     Parameters (__init__)
     ---------------------
     e_low_true, e_high_true : array-like
-        Bornes des bins en énergie vraie (keV).
+        Bounds of the true-energy bins (keV).
     matrix : ndarray
         SRM, shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé [coups s-1].
+        Modelled count rate [counts s-1].
 
     Notes
     -----
-    T est clampé à 1e-3 keV minimum pour éviter les divisions par zéro.
+    T is clamped to a 1e-3 keV minimum to avoid division by zero.
     """
     n_inputs = 1
     n_outputs = 1
-
-    # T = Parameter(default=10.0)      # Température en keV
-    # EM = Parameter(default=1e49)     # Emission Measure en cm^-3
 
     EM = Parameter(default=1e48, bounds=(1e44, 1e52))
     T = Parameter(default=1.0, bounds=(0.1, 50.0))
@@ -225,11 +221,11 @@ class VTH(FittableModel):
         self.exposure = exposure
 
     def evaluate(self, x, EM, T):
-        # Constantes
+        # Constants
         gff = 1.2
         A = 1.07e-42 * gff
 
-        # Sécurité : éviter division par zéro ou valeurs négatives
+        # Safety: avoid division by zero or negative values
         safe_T = max(1e-3, T)
 
         def thermal_model(E):
@@ -245,41 +241,41 @@ class VTH(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  4 — ExpPowerLaw
+#  2 — Single Power Law Times an Exponential (ExpPowerLaw)
 # ══════════════════════════════════════════════════════════
 class ExpPowerLaw(FittableModel):
     """
-    Loi de puissance multipliée par une exponentielle (modèle empirique),
-    convoluée par la SRM.
+    Power law multiplied by an exponential (empirical model),
+    convolved with the SRM.
 
     Phi(E) = p0 * (E / p2)^p1 * exp(e3 - E / e4)
 
     Parameters (astropy)
     --------------------
-    p0 : float, défaut 1.0
+    p0 : float, default 1.0
         Normalisation.
-    p1 : float, défaut -2.0
-        Indice spectral.
-    p2 : float, défaut 20.0
-        Énergie de référence (keV).
-    e3 : float, défaut 1.0
-        Offset exponentiel (sans dimension).
-    e4 : float, défaut 10.0
-        Échelle d'énergie de la coupure exponentielle (keV).
+    p1 : float, default -2.0
+        Spectral index.
+    p2 : float, default 20.0
+        Reference energy (keV).
+    e3 : float, default 1.0
+        Exponential offset (dimensionless).
+    e4 : float, default 10.0
+        Energy scale of the exponential cutoff (keV).
 
     Parameters (__init__)
     ---------------------
     e_low_true, e_high_true : array-like
-        Bornes des bins en énergie vraie (keV).
+        Bounds of the true-energy bins (keV).
     matrix : ndarray
         SRM, shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé [coups s-1].
+        Modelled count rate [counts s-1].
     """
     n_inputs = 1
     n_outputs = 1
@@ -311,52 +307,52 @@ class ExpPowerLaw(FittableModel):
 
 
 # ══════════════════════════════════════════════════════════
-#  5 — V_TH + Power Law
+#  4 — V_TH + Power Law
 # ══════════════════════════════════════════════════════════
 class VTHPlusPowerLaw(FittableModel):
     """
-    Superposition additive d'une composante thermique (VTH) et d'une
-    loi de puissance, convoluée par la SRM.
+    Additive superposition of a thermal component (VTH) and a power
+    law, convolved with the SRM.
 
     Phi(E) = Phi_VTH(E) + Phi_PL(E)
-    avec Phi_VTH(E) = (A_ff * EM) / (E * sqrt(T)) * exp(-E / T)
-    et  Phi_PL(E)  = amplitude * (E / E_pivot)^(-alpha)
+    with Phi_VTH(E) = (A_ff * EM) / (E * sqrt(T)) * exp(-E / T)
+    and  Phi_PL(E)  = amplitude * (E / E_pivot)^(-alpha)
 
     Parameters (astropy)
     --------------------
-    EM : float, défaut 1e48, bornes [1e44, 1e52]
-        Mesure d'émission (cm-3).
-    T : float, défaut 1.0, bornes [0.1, 50.0]
-        Température du plasma (keV).
-    amplitude : float, défaut 1e-2
-        Normalisation de la composante non-thermique.
-    alpha : float, défaut 2.0
-        Indice spectral de la loi de puissance.
+    EM : float, default 1e48, bounds [1e44, 1e52]
+        Emission measure (cm-3).
+    T : float, default 1.0, bounds [0.1, 50.0]
+        Plasma temperature (keV).
+    amplitude : float, default 1e-2
+        Normalisation of the non-thermal component.
+    alpha : float, default 2.0
+        Spectral index of the power law.
 
     Parameters (__init__)
     ---------------------
     e_low_true, e_high_true : array-like
-        Bornes des bins en énergie vraie (keV).
+        Bounds of the true-energy bins (keV).
     matrix : ndarray
         SRM, shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
     E_pivot : float, optional
-        Énergie pivot de la loi de puissance (keV), défaut 100.0.
+        Pivot energy of the power law (keV), default 100.0.
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé [coups s-1].
+        Modelled count rate [counts s-1].
     """
     n_inputs = 1
     n_outputs = 1
 
-    # Paramètres VTH
+    # VTH parameters
     EM = Parameter(default=1e48, bounds=(1e44, 1e52))
     T = Parameter(default=1.0, bounds=(0.1, 50.0))
 
-    # Paramètres Power Law
+    # Power Law parameters
     amplitude = Parameter(default=1e-2)
     alpha = Parameter(default=2.0)
 
@@ -369,7 +365,7 @@ class VTHPlusPowerLaw(FittableModel):
         self.E_pivot = E_pivot
 
     def evaluate(self, x, EM, T, amplitude, alpha):
-        # Constante de Gaunt
+        # Gaunt constant
         gff = 1.2
         A = 1.07e-42 * gff
         safe_T = max(1e-3, T)
@@ -381,54 +377,56 @@ class VTHPlusPowerLaw(FittableModel):
             power = amplitude * (E / self.E_pivot) ** (-alpha)
             return thermal + power
 
-        # Intégration du flux photonique dans chaque bin SRM
+        # Integrate the photon flux within each SRM bin
         true_fluxes = np.array([
             integrate_flux(e1, e2, model_total)
             for e1, e2 in zip(self.e_low_true, self.e_high_true)
         ])
 
-        # Forward-folding via SRM
+        # Forward-folding through the SRM
         folded = np.dot(true_fluxes, self.matrix) / self.exposure
         return folded
 
 
 # ══════════════════════════════════════════════════════════
-#  6 — Power Law Cutoff Fix
+#  5 — Power Law Cutoff Fix
 # ══════════════════════════════════════════════════════════
 class PowerLawCutoffFix(FittableModel):
     """
-    Loi de puissance avec coupure dure fixe (E_cut non ajusté),
-    convoluée par la SRM.
+    Power law with a fixed hard cutoff (E_cut not fitted),
+    convolved with the SRM.
 
-    Phi(E) = amplitude * E^(-alpha)  si E >= E_cut
-           = 0                        si E < E_cut
+    Phi(E) = amplitude * E^(-alpha)  if E >= E_cut
+           = 0                        if E < E_cut
 
-    E_cut est un attribut d'instance fixé à la construction ; il peut
-    être modifié par l'utilisateur via la fenêtre Set Function mais
-    n'est pas un paramètre libre de l'ajustement.
+    E_cut is an instance attribute set at construction time; it can
+    be changed by the user via the Set Function window but is not a
+    free parameter of the fit.
 
     Parameters (astropy)
     --------------------
-    amplitude : float, défaut 1e-2
+    amplitude : float, default 1e-2
         Normalisation [photons cm-2 s-1 keV-1].
-    alpha : float, défaut 2.0
-        Indice spectral.
+    alpha : float, default 2.0
+        Spectral index.
 
     Parameters (__init__)
     ---------------------
     e_low_true, e_high_true : array-like
-        Bornes des bins en énergie vraie (keV).
+        Bounds of the true-energy bins (keV).
     matrix : ndarray
         SRM, shape (N, M).
     exposure : float
-        Temps d'exposition (s).
+        Exposure time (s).
     E_cut : float, optional
-        Énergie de coupure fixe (keV), défaut 10.0.
+        Fixed cutoff energy (keV), default 10.0.
+    E_pivot : float, optional
+        Pivot energy (keV), default 100.0.
 
     Returns (evaluate)
     ------------------
     ndarray, shape (M,)
-        Taux de comptage modélisé [coups s-1].
+        Modelled count rate [counts s-1].
     """
     n_inputs = 1
     n_outputs = 1

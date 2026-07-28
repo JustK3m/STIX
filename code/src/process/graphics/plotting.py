@@ -178,28 +178,6 @@ class Plotting:
             endIndexh += 86400  # Adding 24 h
         self.index_start, self.index_end = self.time_index(self.times, startIndexh, endIndexh)
 
-
-    # def acq_time(self, label):
-    #     day = False
-    #     for i in label:
-    #         if i > 86400:
-    #             day = True
-
-    #     # Correct: use self.start_time and self.end_time directly
-    #     startIndexh = self.start_time
-    #     endIndexh = self.end_time
-
-    #     if day and self.start_time < 3600:
-    #         startIndexh += 86400
-    #     if day and self.end_time < 3600:
-    #         endIndexh += 86400
-
-    #     self.index_start, self.index_end = self.time_index(self.times, startIndexh, endIndexh)
-    #     print(f"Acquisition time adjusted: start index {self.index_start}, end index {self.index_end}")
-    #     print(f"Start time: {self.start_time}, End time: {self.end_time}")
-    #     print(f"Adjusted start index: {startIndexh}, Adjusted end index: {endIndexh}")
-
-
     def log_axis(self, window, relx, rely):
         """Displays the radio boxes allowing the user to choose between linear and logarithmic axis. \n
         Parameters: \n
@@ -331,7 +309,6 @@ class Plotting:
             self.grid_var2 = BooleanVar()
             self.grid_check2 = Checkbutton(self.canvas_plot, text="Show grid", variable=self.grid_var2)
             self.grid_check2.place(relx=0.21, rely=0.82)
-            # self.grid_var2.trace_add('write', self.__update_grid_2)
 
             # To print information about the canal sum
             self.btn_info = Checkbutton(self.canvas_plot, text="Show Information",
@@ -386,32 +363,32 @@ class Plotting:
         """Creates entry boxes to let the user choose the limits of the plot. \n
         Dependencies: entry_int.py"""
 
-        # Créer les listes de valeurs d'énergie 
-        e_low_values = sorted(set(self.energies['e_low'])) 
-        e_high_values = sorted(set(self.energies['e_high'])) 
+        # Build the lists of energy values
+        e_low_values = sorted(set(self.energies['e_low']))
+        e_high_values = sorted(set(self.energies['e_high']))
 
-        
-        # Filtrer les valeurs infinies et NaN dans e_high_values
-        e_high_values = [e for e in e_high_values 
-                if not np.isinf(e) and not np.isnan(e)] 
 
-        # Convertir les valeurs en entiers
+        # Filter out infinite and NaN values from e_high_values
+        e_high_values = [e for e in e_high_values
+                if not np.isinf(e) and not np.isnan(e)]
+
+        # Convert the values to integers
         e_low_values_int = [int(e) for e in e_low_values if e != 0]
         e_high_values_int = [int(e) for e in e_high_values]
 
-        # Créer les variables StringVar pour les OptionMenu
+        # Create the StringVar variables for the OptionMenus
         self.energy_min_var = IntVar()
         self.energy_max_var = IntVar()
 
-        # Définir les valeurs par défaut pour min et max énergie
+        # Set the default min/max energy values
         self.energy_min_var.set(min(e_low_values_int))
         self.energy_max_var.set(max(e_high_values_int))
 
-        # Créer les OptionMenu pour l'énergie minimale et maximale
+        # Create the OptionMenus for min and max energy
         self.energy_min = OptionMenu(self.canvas_plot, self.energy_min_var, *e_low_values_int)
         self.energy_max = OptionMenu(self.canvas_plot, self.energy_max_var, *e_high_values_int)
 
-        # Positionner les OptionMenu dans la fenêtre (avec place(), ajuster la position si nécessaire)
+        # Position the OptionMenus in the window (via place(), adjust position if needed)
         if self.from_import:
             self.energy_min.place(relx=0.375, rely=0.27 + 0.14 * i, anchor=N)
             self.energy_max.place(relx=0.625, rely=0.27 + 0.14 * i, anchor=N)
@@ -508,114 +485,6 @@ class Plotting:
 
         return data  # Returns data for energy bands that can be plot
 
-    # def __time_profile_plotting(self, data, typ, show=True):
-    #     """Plots the function of time by selected Unit. Uses the colormesh function provided by matplotlib library. \n
-    #     Parameters:
-    #         data: data to read; \n
-    #         typ: type of data: 'rate', 'counts', or 'flux'; \n
-    #         show: if True, displays the plot."""
-    #     # plt.figure()
-    #     self.columns_label = [str(low) + '-' + str(high) + 'keV' for low, high in
-    #                           zip(self.energies_low, self.energies_high)]
-    #     self.columns_label.append('Times')
-    #     color = ['blue', 'red', 'green', 'black', 'orange']
-
-    #     # Absciss data transformation
-    #     self.label_time_plot = np.asarray(self.times) + self.start_time
-
-    #     if self.entire_file:
-    #         data_reduced = data
-    #         times_reduced = self.times
-    #     else:
-    #         self.acq_time(self.label_time_plot)
-    #         times_reduced = data[self.index_start:self.index_end + 1, -1]
-    #         data_reduced = data[self.index_start:self.index_end + 1, :]
-
-    #     # Plotting different figures according to chosen parameter
-    #     if typ == "rate":
-    #         # Choosing the specific color for each energy channel
-    #         df = pd.DataFrame(data_reduced, index=times_reduced, columns=self.columns_label)
-    #         plt.ylabel('Rate (Counts/s) by Bands')
-    #         plt.title('Time Profile Plotting Rate (Counts/s)')
-
-    #     elif typ == "counts":
-    #         # Choosing the specific color for each energy channel
-    #         df = pd.DataFrame(data_reduced, index=times_reduced,
-    #                           columns=self.columns_label)
-    #         plt.ylabel('Counts by Bands')
-    #         plt.title('Time Profile Plotting Counts')
-
-    #     elif typ == "flux":
-    #         # Choosing the specific color for each energy channel
-    #         df = pd.DataFrame(data_reduced, index=times_reduced,
-    #                           columns=self.columns_label)
-    #         plt.ylabel('Flux by Bands')
-    #         plt.title('Time Profile Plotting Flux')
-
-    #     else:
-    #         df = None
-    #         print("Error")
-
-    #     ax_bis1 = plt.gca()
-    #     for l_bands in range(len(self.energies_low)):
-    #         df.plot(x='Times', y=self.columns_label[l_bands], color=color[l_bands], ax=ax_bis1)
-
-    #     # Absciss legend plot
-    #     if show:
-    #         if self.entire_file:
-    #             file_duration = max(self.times) - min(self.times)
-    #         else:
-    #             file_duration = self.times[self.index_end] - self.times[self.index_start]
-
-    #         if file_duration <= 1800:  # file duration less than 30 minutes
-    #             step_x = 120
-    #         elif file_duration <= 3600:  # file duration less than 1 hour
-    #             step_x = 480
-    #         elif file_duration <= 28800:  # file duration less than 8 hours
-    #             step_x = 3600
-    #         else:
-    #             step_x = 7200  # file duration more than 8 hours
-
-    #         # Coloration
-    #         if self.entire_file:
-    #             x_positions = np.arange(0, file_duration, step_x)
-    #         else:
-    #             x_positions = np.arange(data[self.index_start, -1],
-    #                                     file_duration + data[self.index_start, -1], step_x)
-    #         x_positions_bis = x_positions + self.start_time  # pixel count at label position
-    #         x_labels_plot = list(
-    #             map(lambda x: (str(datetime.timedelta(seconds=float(x)))).split('.')[0][:-3], x_positions_bis))
-    #         x_labels_plot_days = []
-    #         for i in range(len(x_labels_plot)):
-    #             if 'day' in x_labels_plot[i]:
-    #                 x_labels_plot_days.append((x_labels_plot[i].split(','))[1])
-    #             else:
-    #                 x_labels_plot_days.append(x_labels_plot[i])
-    #         # plt.xticks(x_positions, x_labels_plot_days)
-    #         plt.xticks(x_positions, x_labels_plot_days, rotation=45)
-    #         plt.gca().xaxis.set_major_locator(tck.MaxNLocator(nbins=10))
-
-
-    #         # Scaling
-    #         if self.scalex.get() == 'log':
-    #             plt.xscale('log')
-    #         if self.scaley.get() == 'log':
-    #             plt.yscale('log')
-
-    #         # Plotting and closing parameters window
-    #         # plt.xlabel('Start time: ' + str(self.start_date) + ' -- End time : ' + str(
-    #         #     self.end_date))  # load start time from header and display it in X - axis
-    #         plt.xlabel(str(self.start_date) + '   ---   ' + str(self.end_date))
-    #         self.toptime.destroy()
-            
-    #         if hasattr(self, 'grid_var2') and self.grid_var2.get():
-    #             plt.grid(True)
-    #         else:
-    #             plt.grid(False)
-
-    #         plt.show()
-
-
     def __time_profile_plotting(self, data, typ, show=True):
         """Plots the function of time by selected Unit."""
         self.columns_label = [str(low) + '-' + str(high) + 'keV' for low, high in zip(self.energies_low, self.energies_high)]
@@ -651,7 +520,6 @@ class Plotting:
             self.acq_time(np.asarray(self.times) + self.start_time)
             index_start = self.date_to_times_index(self.start_date)
             index_end = self.date_to_times_index(self.end_date)
-            # print(f"Index start: {index_start}, Index end: {index_end}")  
             times_reduced = data[index_start:index_end + 1, -1]
             data_reduced = data[index_start:index_end + 1, :]
             print('index start:', index_start, 'index end:', index_end)
@@ -680,21 +548,20 @@ class Plotting:
             plt.ylabel('Flux by Bands')
             plt.title('Time Profile Plotting Flux')
         else:
-            print("Type inconnu")
+            print("Unknown type")
             return
 
-        # Affichage des courbes
+        # Plot the curves
         for l_bands in range(len(self.energies_low)):
-            # df.plot(x='Times', y=self.columns_label[l_bands], color=color[l_bands], ax=plt.gca())
             plt.plot(times_datetime, data_reduced[:, l_bands], color=color[l_bands], label=self.columns_label[l_bands])
 
 
         ax = plt.gca()
-        ax.set_xlim([times_datetime[0], times_datetime[-1]])  # Bien aligner le graphe
-        ax.minorticks_on()  
+        ax.set_xlim([times_datetime[0], times_datetime[-1]])  # Properly align the plot
+        ax.minorticks_on()
         ax.grid(True, which='minor', linestyle=':', linewidth=0.1, alpha=0.1)
 
-        # Format de temps automatique
+        # Automatic time format
         locator = AutoDateLocator()
         formatter = DateFormatter('%H:%M:%S' if total_seconds <= 86400 else '%m-%d\n%H:%M')
         ax.xaxis.set_major_locator(locator)
@@ -713,21 +580,13 @@ class Plotting:
         else:
             plt.grid(False)
 
-        # if hasattr(self, 'grid_var2') and self.grid_var2.get():
-        #     # self.__update_grid_2()
-        #     plt.grid(True, which='major', linestyle='-', linewidth=0.5, alpha=0.5)
-        # else:
-        #     # plt.minorticks_on()
-        #     # plt.grid(True, which='minor', linestyle=':', linewidth=0.5, alpha=0.5)
-        #     plt.grid(False)
-
         plt.xticks(rotation=45)
         if show:
             plt.show()
  
     def date_to_times_index(self, date_value):
         """
-        Calcule la valeur de self.times approximative (via proportionnalité) pour une date donnée.
+        Computes the approximate value of self.times (via proportionality) for a given date.
         """
         t_min = np.min(self.times)
         t_max = np.max(self.times)
@@ -739,10 +598,10 @@ class Plotting:
         total_seconds = (end_datetime - start_datetime).total_seconds()
         delta_seconds = (date_value - start_datetime).total_seconds()
 
-        # Proportionnalité linéaire
+        # Linear proportionality
         t_estimated = t_min + (delta_seconds / total_seconds) * (t_max - t_min)
 
-        # Pour obtenir un index le plus proche dans self.times
+        # To get the nearest index in self.times
         index = (np.abs(self.times - t_estimated)).argmin()
 
         return index
@@ -788,8 +647,6 @@ class Plotting:
         if self.show:
             plt.figure()
         data = np.zeros(self.energies_bin)
-        # print('energies_bin:', self.energies_bin)
-        # print('data shape:', data.shape)
         self.label_time_plot_spectro = np.asarray(self.times) + self.start_time
 
         if not self.entire_file:
@@ -835,13 +692,10 @@ class Plotting:
         if not self.show:
             return data
 
-        # print('data shape:', data.shape)
-        # print('lower bands shape:', self.lower_bands.shape)
         self.win_log_spec()
         plt.rcParams["figure.figsize"] = [6, 6]
         plt.title(title)
         plt.plot(self.lower_bands, data, drawstyle='steps-post')  # Unit vs Energy
-        # plt.xlabel('Energy(keV) / Start time: ' + str(self.start_date) + ' -- End time : ' + str(self.end_date))
         plt.xlabel(str(self.start_date) + '    ---    ' + str(self.end_date))
         plt.ylabel(ylabel)
         plt.xlim(left=self.lower_bands[0])
@@ -852,81 +706,6 @@ class Plotting:
             plt.grid(True)
         else:
             plt.grid(False)
-            
-
-        
-    # def __plot_spectrum(self):
-    #     """Preparing figure plotting with the data."""
-    #     if self.show:
-    #         plt.figure()
-        
-    #     # Initialize data array with correct shape (32,) instead of (1,)
-    #     data = np.zeros(self.energies_bin) if isinstance(self.energies_bin, int) else np.zeros(len(self.energies_bin))
-    #     self.label_time_plot_spectro = np.asarray(self.times) + self.start_time
-
-    #     if not self.entire_file:
-    #         self.acq_time(self.label_time_plot_spectro)
-
-    #     if self.type == 'rate':
-    #         self.data_plot = self.convert_counts_rate()
-    #         for i in range(len(data)):  # for each channel
-    #             # Determines Rate for "Plot Spectrum"
-    #             if self.entire_file:
-    #                 data[i] = np.nanmean(self.data_plot[:, i])
-    #             else:
-    #                 data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
-    #         ylabel = 'counts/s'
-    #         title = 'STIX SOLAR Range vs Energy'
-
-    #     elif self.type == 'counts':
-    #         for i in range(len(data)):  # for each channel
-    #             # Determines Counts for "Plot Spectrum"
-    #             if self.entire_file:
-    #                 data[i] = np.nanmean(self.counts[:, i])
-    #             else:
-    #                 data[i] = np.nanmean(self.counts[self.index_start:self.index_end + 1, i])
-    #         ylabel = 'counts'
-    #         title = 'STIX SOLAR Counts vs Energy'
-
-    #     elif self.type == 'flux':
-    #         self.data_plot = self.convert_counts_flux()
-    #         for i in range(len(data)):  # for each channel
-    #             # Determines Flux for "Plot Spectrum"
-    #             if self.entire_file:
-    #                 data[i] = np.nanmean(self.data_plot[:, i]) / self.area
-    #             else:
-    #                 data[i] = np.nanmean(self.data_plot[self.index_start:self.index_end + 1, i])
-    #         ylabel = 'counts/s/mm²/keV'
-    #         title = 'STIX SOLAR Flux vs Energy'
-
-    #     else:
-    #         ylabel = 'Unknown unit'
-    #         title = 'STIX SOLAR ??? vs Energy'
-    #         print('Unit not found')
-
-    #     if not self.show:
-    #         return data
-
-    #     print('data shape:', data.shape)
-    #     print('lower bands shape:', self.lower_bands.shape)
-        
-    #     # Ensure shapes match before plotting
-    #     if len(data) != len(self.lower_bands):
-    #         data = data.reshape(-1)  # Flatten the data array if needed
-        
-    #     self.win_log_spec()
-    #     plt.rcParams["figure.figsize"] = [6, 6]
-    #     plt.title(title)
-    #     plt.plot(self.lower_bands, data, drawstyle='steps-post')  # Unit vs Energy
-    #     plt.xlabel('Energy(keV) / Start time: ' + str(self.start_date) + ' -- End time : ' + str(self.end_date))
-    #     plt.ylabel(ylabel)
-
-    #     # If the grid_var is defined and set to True, show the grid otherwise hide it
-    #     if hasattr(self, 'grid_var') and self.grid_var.get():
-    #         plt.grid(True)
-    #     else:
-    #         plt.grid(False)
-
 
     def __update_grid(self, *args):
         """Updates the grid display when the checkbox is checked or unchecked."""
@@ -936,30 +715,12 @@ class Plotting:
 
             ax.grid(show_grid, which='major')  # principal grid
 
-            ax.minorticks_on()  # Active ticks secondaires
+            ax.minorticks_on()  # Enable minor ticks
             ax.grid(show_grid, which='minor', linestyle=':', linewidth=0.5, alpha=0.7)
 
             plt.draw()
         except Exception as e:
-            print("Grille non modifiable :", e)
-
-    # def __update_grid_2(self, *args):
-    #     """Updates the grid display when the checkbox is checked or unchecked."""
-    #     try:
-    #         ax = plt.gca()
-    #         show_grid = self.grid_var2.get()
-
-    #         ax.grid(show_grid, which='major')
-
-    #         ax.minorticks_on() 
-    #         ax.grid(show_grid, which='minor', linestyle=':', linewidth=0.5, alpha=0.7)
-
-    #         plt.draw()
-    #     except Exception as e:
-    #         print("Grille non modifiable :", e)
-
-
-
+            print("Grid could not be modified:", e)
 
     def win_log_spec(self):
         """Creates a new window 'window_spec_limits' to choose the linear or logarithmic axis for spectrum plotting.
@@ -1062,7 +823,6 @@ class Plotting:
         # Plotting rate
         if typ == 'rate':
             self.data_plot = self.convert_counts_rate()
-            # self.data_plot =  np.where(self.data_plot != 0, self.data_plot, 1e-5)
             if self.entire_file:
                 plt.pcolormesh(self.times_datetime, self.lower_bands, np.log10(np.transpose(self.data_plot)),
                                shading='auto', cmap='coolwarm')
@@ -1101,57 +861,11 @@ class Plotting:
         else:
             print('error')
 
-        # # Defining x step
-        # file_duration = max(self.times_sequences) - min(self.times_sequences)
-        # if file_duration <= 1800:  # file duration less than 30 minutes
-        #     step_x = 120
-        # elif file_duration <= 3600:  # file duration less than 1 hour
-        #     step_x = 480
-        # elif file_duration <= 28800:  # file duration less than 8 hours
-        #     step_x = 3600
-        # else:  # file duration more than 8 hours
-        #     step_x = 7200
-
-        # # x axis construction
-        # x_positions = np.arange(0, file_duration, step_x)
-
-        # if self.entire_file:
-        #     x_positions_bis = x_positions + self.start_time  # pixel count at label position
-        #     x_labels_plot = list(
-        #         map(lambda x: (str(timedelta(seconds=float(x)))).split('.')[0][:-3], x_positions_bis))
-        # else:
-        #     x_positions_bis = np.asarray(x_positions) + self.times[self.index_start]
-        #     x_positions_bis_label = np.asarray(x_positions) + self.label_time_plot_spectro[self.index_start]
-        #     x_labels_plot = list(
-        #         map(lambda x: (str(timedelta(seconds=float(x)))).split('.')[0][:-3], x_positions_bis_label))
-
-        # x_labels_plot_days = []
-        # for i in range(len(x_labels_plot)):
-        #     if 'day' in x_labels_plot[i]:
-        #         x_labels_plot_days.append((x_labels_plot[i].split(','))[1])
-        #     else:
-        #         x_labels_plot_days.append(x_labels_plot[i])
-        # if self.entire_file:
-        #     plt.xticks(x_positions, x_labels_plot_days)
-        # else:
-        #     plt.xticks(x_positions_bis, x_labels_plot_days)
-
-        # # Ordinate legend plot
-        # if self.entire_file:
-        #     self.energy_idx = self.lower_bands
-        #     self.ene_leg = [str(a) + '-' + str(b) for a, b in zip(self.lower_bands, self.upper_bands)]
-        #     self.ene_leg = np.array(self.ene_leg)
-
-        # Axe X dynamique propre (datetime)
+        # Clean dynamic X axis (datetime)
         ax = plt.gca()
 
-        # ax.grid(False, which='major')  # principal grid
-
-        ax.minorticks_on()  # Active ticks secondaires
-        # ax.grid(True, which='minor', linestyle=':', linewidth=0.5, alpha=0.7)
+        ax.minorticks_on()  # Enable minor ticks
         ax.grid(True, which='minor', linestyle=':', linewidth=0.1, alpha=0.1)
-
-        # plt.draw()
 
         locator = AutoDateLocator()
         formatter = DateFormatter('%H:%M:%S' if total_seconds <= 86400 else '%m-%d\n%H:%M')
@@ -1159,7 +873,7 @@ class Plotting:
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(formatter)
 
-        # Aligner le graphe au début
+        # Align the plot at the start
         if self.entire_file:
             ax.set_xlim(self.times_datetime[0], self.times_datetime[-1])
         else:
@@ -1192,12 +906,12 @@ class Plotting:
 
     def specgm_lim(self):
         """Displays a window to allow user to change plot scale axis for spectrogram plotting using OptionMenus."""
-        # Créer la fenêtre
+        # Create the window
         self.window_elimits = Toplevel()
         self.window_elimits.title('Energy limits')
         self.window_elimits.geometry("400x300")
 
-        # Texte d'instruction
+        # Instruction text
         self.text_energy_elimit = Label(
             self.window_elimits,
             text="Choose the minimum and maximum energy to plot the spectrogram.",
@@ -1207,23 +921,23 @@ class Plotting:
         self.text_energy_elimit.place(relx=0.5, rely=0.09, anchor='center')
 
 
-        # Créer les listes de valeurs d'énergie 
-        e_low_values = sorted(set(self.energies['e_low'])) 
-        e_high_values = sorted(set(self.energies['e_high'])) 
+        # Build the lists of energy values
+        e_low_values = sorted(set(self.energies['e_low']))
+        e_high_values = sorted(set(self.energies['e_high']))
 
-        # Filtrer les valeurs infinies et NaN dans e_high_values
-        e_high_values = [e for e in e_high_values 
-                if not np.isinf(e) and not np.isnan(e)]    
+        # Filter out infinite and NaN values from e_high_values
+        e_high_values = [e for e in e_high_values
+                if not np.isinf(e) and not np.isnan(e)]
 
-        # Convertir les valeurs en entiers
+        # Convert the values to integers
         e_low_values_int = [int(e) for e in e_low_values if e != 0]
         e_high_values_int = [int(e) for e in e_high_values]
 
-        # Créer les variables StringVar pour les OptionMenu
+        # Create the StringVar variables for the OptionMenus
         self.energy_min_var = IntVar()
         self.energy_max_var = IntVar()
 
-        # Variables IntVar pour OptionMenu
+        # IntVar variables for the OptionMenus
         self.ylim_min_var = IntVar()
         self.ylim_max_var = IntVar()
         self.ylim_min_var.set(min(e_low_values_int))
@@ -1236,10 +950,10 @@ class Plotting:
         self.e_ylim_max = OptionMenu(self.window_elimits, self.ylim_max_var, *e_high_values_int)
         self.e_ylim_max.place(relx=0.5, rely=0.37, relheight=0.10, relwidth=0.25, anchor='center')
 
-        # Scaling (log/linear checkbox ou autre, selon ta fonction log_axis)
+        # Scaling (log/linear checkbox or other, depending on the log_axis function)
         self.log_axis(self.window_elimits, 0.10, 0.50)
 
-        # Bouton pour lancer le tracé du spectrogramme
+        # Button to trigger the spectrogram plot
         self.btn_plot_spgm = Button(self.window_elimits, text="Plot spectrogram", command=self.show_specgm)
         self.btn_plot_spgm.place(relx=0.5, rely=0.85, anchor=N)
 
@@ -1256,16 +970,6 @@ class Plotting:
 
     def show_specgm(self):
         """Adds all chosen values to the plot and shows the figure."""
-        # Limits
-        # if self.e_ylim_min.get().isdigit():
-        #     self.ylim_min = int(self.e_ylim_min.get())
-        # else:
-        #     self.ylim_min = 1  # Default min value
-        # if self.e_ylim_max.get().isdigit():
-        #     self.ylim_max = int(self.e_ylim_max.get())
-        # else:
-        #     self.ylim_max = 150  # Default max value
-
         # Scaling
         if self.scalex.get() == 'log':
             plt.xscale('log')
@@ -1277,7 +981,6 @@ class Plotting:
         plt.ylim(self.ylim_min_var.get(), self.ylim_max_var.get())
         plt.ylabel('Energy (keV)')
         plt.xlabel('Time(UT)')
-        # plt.xlabel('Start time: ' + str(self.start_date) + ' -- End time : ' + str(self.end_date))
         plt.xlabel(str(self.start_date) + '   ---   ' + str(self.end_date))
         plt.colorbar(ax=self.ax, label=self.spgm_label, format=tck.FuncFormatter(self.colorbar_scale))
         plt.show()

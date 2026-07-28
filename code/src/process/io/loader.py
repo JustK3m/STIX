@@ -2,14 +2,14 @@ import numpy as np
 from astropy.io import fits
 
 _spec_cache = {
-    "fpath": None,  # chemin du fichier spectre actuellement en cache
-    "data": None,  # dict retourné par load_data()
-    "headers": None,  # dict retourné par load_header()
+    "fpath": None,  # path of the spectrum file currently cached
+    "data": None,  # dict returned by load_data()
+    "headers": None,  # dict returned by load_header()
 }
 
 _srm_cache = {
-    "rpath": None,  # chemin du fichier SRM actuellement en cache
-    "data": None,  # dict retourné par load_srm_data()
+    "rpath": None,  # path of the SRM file currently cached
+    "data": None,  # dict returned by load_srm_data()
 }
 
 
@@ -36,44 +36,44 @@ def _load_data(hdulist):
             if 'obt_start' in colnames and 'obt_end' in colnames:
                 result['obt_start'] = hdu.data['obt_start']
                 result['obt_end']   = hdu.data['obt_end']
-            # e_low/e_high dans DATA (fichiers originaux)
+            # e_low/e_high in DATA (original files)
             if 'e_low' in colnames and 'e_high' in colnames:
                 result['e_low']  = hdu.data['e_low']
                 result['e_high'] = hdu.data['e_high']
 
         elif hdu.name == 'ENERGIES':
-            # e_low/e_high dans ENERGIES (fichiers fusionnés)
-            # Prioritaire sur DATA si les deux existent
+            # e_low/e_high in ENERGIES (merged files)
+            # Takes priority over DATA if both exist
             if 'e_low' in colnames and 'e_high' in colnames:
                 result['e_low']  = hdu.data['e_low']
                 result['e_high'] = hdu.data['e_high']
 
     for key in ['counts', 'counts_err', 'e_low', 'e_high', 'time', 'timedel']:
         if key not in result:
-            print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
+            print(f"⚠️  Warning: {key} not found in the FITS file.")
 
     return result
 
 
 def _load_srm_data(hdulist):
     """
-    Lit un fichier FITS de matrice de réponse instrumentale STIX.
+    Reads a STIX instrument response matrix (SRM) FITS file.
 
     Parameters
     ----------
     hdulist : HDUList
-        Chemin complet du fichier FITS SRM.
+        Already-opened SRM FITS HDU list.
 
     Returns
     -------
-    dict avec les clés :
-        'MATRIX'   : ndarray (N, M) — matrice de réponse.
-        'ENERG_LO' : ndarray (N,)   — bornes inférieures en énergie vraie (keV).
-        'ENERG_HI' : ndarray (N,)   — bornes supérieures en énergie vraie (keV).
+    dict with keys:
+        'MATRIX'   : ndarray (N, M) — response matrix.
+        'ENERG_LO' : ndarray (N,)   — lower bounds in true energy (keV).
+        'ENERG_HI' : ndarray (N,)   — upper bounds in true energy (keV).
 
     Notes
     -----
-    Un avertissement est affiché pour toute clé requise absente du FITS.
+    A warning is printed for any required key missing from the FITS file.
     """
 
     result = {}
@@ -92,11 +92,11 @@ def _load_srm_data(hdulist):
             result['ENERG_LO'] = hdu.data['ENERG_LO']
             result['ENERG_HI'] = hdu.data['ENERG_HI']
 
-    # Vérifications de base
+    # Basic checks
     required_keys = ['MATRIX', 'ENERG_LO', 'ENERG_HI']
     for key in required_keys:
         if key not in result:
-            print(f"⚠️  Attention : {key} non trouvé dans le FITS.")
+            print(f"⚠️  Warning: {key} not found in the FITS file.")
     return result
 
 
@@ -113,7 +113,7 @@ def _load_header(hdulist):
 
 
 def _reload_spec(fpath):
-    """Ouvre le fichier une seule fois et remplit data + headers."""
+    """Opens the file once and populates data + headers."""
     with fits.open(fpath) as hdulist:
         _spec_cache["data"] = _load_data(hdulist)
         _spec_cache["headers"] = _load_header(hdulist)

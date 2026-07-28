@@ -2,7 +2,7 @@ from tkinter import *
 
 
 def open_user_guide():
-    """Ouvre la fenêtre User Guide."""
+    """Opens the User Guide window."""
     guide = Toplevel(background="#f7f9fc")
     guide.title("User Guide")
     guide.geometry("700x600")
@@ -27,14 +27,14 @@ def open_user_guide():
     text.pack(fill=BOTH, expand=True)
     scrollbar.config(command=text.yview)
 
-    # --- Tags de mise en forme ---
+    # --- Formatting tags ---
     text.tag_config("title", font=("Helvetica", 13, "bold"), spacing3=6)
     text.tag_config("heading", font=("Helvetica", 11, "bold"), spacing1=10, spacing3=3)
     text.tag_config("subhead", font=("Helvetica", 10, "bold italic"), spacing1=6)
     text.tag_config("body", font=("Helvetica", 10), spacing1=2)
     text.tag_config("note", font=("Helvetica", 9, "italic"), foreground="#555555")
 
-    # --- Contenu ---
+    # --- Content ---
     content = [
         ("title", "STIX Spectral Data Analysis Package — User Guide\n"),
 
@@ -131,6 +131,14 @@ def open_user_guide():
          "optimal E_cut.\n"
          "Parameters: EM, T (thermal), amplitude, α, E_pivot, E_cut (optimised).\n"
          "Use case: flares where the thermal/non-thermal transition energy is unknown.\n"),
+
+        ("subhead", "Neural Network\n"),
+        ("body",
+         "Reconstructs the photon spectrum Φ(E) directly from the observed counts "
+         "using a pre-trained neural network, without an explicit forward-folding fit.\n"
+         "No fitted parameters; the SRM is provided to the network as a conditioning "
+         "input rather than fitted against.\n"
+         "Use case: fast, model-independent spectral reconstruction.\n"),
 
         ("heading", "3. Fit Statistics\n"),
         ("subhead", "Chi² (default)\n"),

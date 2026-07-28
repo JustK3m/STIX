@@ -17,8 +17,8 @@ class IntervalSelector:
             ydata: list or matrix containing data for y axis (i.e. energies);
 
             All parameters below are optional:
-            x_scale: scale of x axis;
-            plot_label: labels for units on x axis;
+            x_scale: accepted but currently unused;
+            plot_label: accepted but currently unused;
             col_label: label for each band in ydata;
             title: displayed name of the figure;
             xlabel: displayed label for x axis;
@@ -28,13 +28,13 @@ class IntervalSelector:
             band: when samefig is False, plots only the ydata of the given band;
             rounding: rounding of returned starting and ending times.
 
-        Returns:
-            start x & end x: starting and ending x for selection as datetimes."""
+        Builds and displays the figure; call graphical_selection() afterwards
+        to let the user pick an interval and get back the start/end datetimes."""
 
         self.fig, self.ax = plt.subplots()
         self.x_start = None
         self.x_end   = None
-        self._span   = None  # Maintenu en vie dans self
+        self._span   = None  # Kept alive on self
 
         if col_label:
             self.df = pd.DataFrame(ydata, index=xdata, columns=col_label[0] if col_label else None)
@@ -69,7 +69,7 @@ class IntervalSelector:
         self.fig.canvas.mpl_connect('draw_event', update_xticks_on_zoom)
         self.fig.autofmt_xdate()
 
-        # Force le focus sur cette fenêtre même si d'autres figures sont ouvertes
+        # Force focus onto this window even if other figures are open
         try:
             self.fig.canvas.manager.window.lift()
             self.fig.canvas.manager.window.focus_force()
@@ -77,12 +77,12 @@ class IntervalSelector:
             pass
 
     def graphical_selection(self):
-        """Active le SpanSelector horizontal et retourne start/end en datetime."""
+        """Activates the horizontal SpanSelector and returns start/end as datetimes."""
 
         def onselect(xmin, xmax):
             self.x_start = xmin
             self.x_end   = xmax
-            # Dessine la zone sélectionnée et ferme
+            # Draws the selected region and closes
             self.fig.canvas.draw_idle()
             plt.close(self.fig)
 
@@ -93,7 +93,7 @@ class IntervalSelector:
             interactive=True
         )
 
-        plt.show()  # Bloquant : retourne après plt.close(self.fig)
+        plt.show()  # Blocking: returns after plt.close(self.fig)
 
         if self.x_start is None or self.x_end is None:
             return None, None
