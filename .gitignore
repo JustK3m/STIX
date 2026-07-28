@@ -17,6 +17,9 @@ __pycache__/
 .ipynb_checkpoints/
 *.ipynb_checkpoints/*
 
+# Test artifacts
+.pytest_cache/
+
 # Configuration files
 *.log
 *.sqlite3
