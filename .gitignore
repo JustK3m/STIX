@@ -20,6 +20,9 @@ __pycache__/
 # Test artifacts
 .pytest_cache/
 
+# Generated API documentation (regenerate with: pdoc3 --html --output-dir docs --force process user_guide, run from code/src)
+docs/
+
 # Configuration files
 *.log
 *.sqlite3
