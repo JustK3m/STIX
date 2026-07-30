@@ -84,18 +84,42 @@ def open_user_guide():
         ("subhead", "Step 4 — Plot Fit Results\n"),
         ("body",
          "Load a STIX spectrum FITS file and a response matrix FITS file "
-         "(SRM), select a spectral model, configure initial values and "
-         "bounds via 'Function value(s)', choose the fit statistic (Chi² or "
-         "C-stat), define the energy range to fit, then click 'Do Fit'. "
-         "Enabling 'Data-Background' subtracts the background computed in "
-         "Step 3 (you will be prompted to open the Background window first "
-         "if it hasn't been run yet). The fitted parameters are displayed on "
-         "the plot when 'Display parameters' is checked. The 'Photon' option "
-         "shows the deconvolved photon spectrum in true energy space, after "
-         "choosing a linear or log scale for each axis. 'Close Plots' closes "
-         "all open figures.\n"),
+         "(SRM), then use 'Set method' to choose between Forward Folding and "
+         "CNN (see section 2 below). Define the energy range to fit, then "
+         "click 'Do Fit'. Enabling 'Data-Background' subtracts the "
+         "background computed in Step 3 (you will be prompted to open the "
+         "Background window first if it hasn't been run yet). The fitted "
+         "parameters are displayed on the plot when 'Display parameters' is "
+         "checked. The 'Photon' option shows the deconvolved photon spectrum "
+         "in true energy space, after choosing a linear or log scale for "
+         "each axis. 'Close Plots' closes all open figures.\n"),
+        ("note",
+         "With Forward Folding, also select a spectral model from the list, "
+         "configure initial values and bounds via 'Function value(s)', and "
+         "choose the fit statistic (Chi² or C-stat). These three controls "
+         "are disabled under CNN, which needs none of them.\n"),
 
-        ("heading", "2. Available Spectral Models\n"),
+        ("heading", "2. Fitting Methods\n"),
+        ("body",
+         "'Set method' (Step 4) chooses how the photon spectrum is "
+         "reconstructed from the observed counts:\n"),
+
+        ("subhead", "Forward Folding\n"),
+        ("body",
+         "Fits one of the physical spectral models below to the data by "
+         "forward-folding it through the SRM. Requires selecting a model "
+         "from the list and a fit statistic.\n"),
+
+        ("subhead", "CNN\n"),
+        ("body",
+         "Reconstructs the photon spectrum Φ(E) directly from the observed "
+         "counts using a pre-trained neural network, without an explicit "
+         "forward-folding fit. No model selection, parameters, or fit "
+         "statistic; the SRM is provided to the network as a conditioning "
+         "input rather than fitted against.\n"
+         "Use case: fast, model-independent spectral reconstruction.\n"),
+
+        ("heading", "3. Available Spectral Models (Forward Folding)\n"),
 
         ("subhead", "Power Law\n"),
         ("body",
@@ -160,15 +184,7 @@ def open_user_guide():
          "Parameters: EM, T (thermal), amplitude, α, E_pivot, E_cut (optimised).\n"
          "Use case: flares where the thermal/non-thermal transition energy is unknown.\n"),
 
-        ("subhead", "Neural Network\n"),
-        ("body",
-         "Reconstructs the photon spectrum Φ(E) directly from the observed counts "
-         "using a pre-trained neural network, without an explicit forward-folding fit.\n"
-         "No fitted parameters; the SRM is provided to the network as a conditioning "
-         "input rather than fitted against.\n"
-         "Use case: fast, model-independent spectral reconstruction.\n"),
-
-        ("heading", "3. Fit Statistics\n"),
+        ("heading", "4. Fit Statistics (Forward Folding)\n"),
         ("subhead", "Chi² (default)\n"),
         ("body",
          "Minimisation of weighted residuals in the least-squares sense. "
@@ -182,7 +198,7 @@ def open_user_guide():
         ("note",
          "Both statistics use the Levenberg-Marquardt optimisation algorithm.\n"),
 
-        ("heading", "4. Display Options\n"),
+        ("heading", "5. Display Options\n"),
         ("body",
          "Plot Units: selects Rate, Counts, or Flux for the data and model curves.\n"
          "Display parameters: shows the fitted parameters on the plot.\n"

@@ -57,7 +57,6 @@ class Fitting:
                                      "amplitude": (1e-12, 1e6), "alpha": (0.1, 50.0)},
         "V_TH x PowerLawCutoffFree": {"EM": (1e44, 1e52), "T": (0.1, 50.0),
                                       "amplitude": (1e-12, 1e6), "alpha": (0.1, 50.0)},
-        "Neural Network":{},
     }
 
     # ── Default initial values ───────────────────────────
@@ -79,7 +78,6 @@ class Fitting:
         "V_TH x PowerLawCutoffFree": {"EM": 1e48, "T": 1.0,
                                       "amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0,
                                       "Ec_min": 4, "Ec_max": 20},
-        "Neural Network": {},
     }
 
     # create a new window called 'SPEX Fit Options'
@@ -110,9 +108,13 @@ class Fitting:
             Bounds of the SRM's true-energy bins (keV).
         matrix : ndarray, shape (N, M)
             Instrument response matrix (SRM).
+        method_var : str
+            Active fitting method, "Forward Folding" (default) or "CNN",
+            set via the "Set method" control.
         fitter : astropy fitter
             Active fitter instance (LevMarLSQFitter by default,
-            LevMarCstatFitter if C-stat is selected).
+            LevMarCstatFitter if C-stat is selected). Only used when
+            method_var is "Forward Folding".
         user_param_values : dict
             Initial values set by the user via Set Function.
         user_param_bounds : dict
@@ -122,7 +124,7 @@ class Fitting:
 
         self.top2 = Toplevel()
         self.top2.title('SPEX Fit Options')  # title of the window
-        self.top2.geometry("1000x600")  # size of the new window
+        self.top2.geometry("1000x650")  # size of the new window (widened for the Set method control)
 
         self.fname = loader.activeFile()
         self.rname = loader.activeSRMfile()  # # Name of the .fits file imported (response matrix)
@@ -157,6 +159,18 @@ class Fitting:
         Label(self.top2, text="Choose the files and energy range:", fg='blue',
               font=("Helvetica", 11, "bold")).place(relx=0.65, rely=0.07)  # set the position
 
+        # Fitting method: Forward Folding (physical models below) or CNN
+        self.method_var = "Forward Folding"
+
+        def Set_Method(name):
+            self.method_var = name
+            self.menuMethod.config(text=name)
+            state = DISABLED if name == "CNN" else NORMAL
+            self.lbox.config(state=state)
+            self.btn_function_values.config(state=state)
+            self.menuStat.config(state=state)
+
+
         # Spectrum: file name
         Label(self.top2, text="Spectrum: ").place(relx=0.65, rely=0.2, anchor=W)
         self.text_filename = Entry(self.top2, width=30)
@@ -182,14 +196,26 @@ class Fitting:
 
         Button(self.top2, text='Browse ->', command=self.open_srm_file).place(relx=0.92, rely=0.25, anchor=W)
 
+        Label(self.top2, text="Set method:").place(relx=0.65, rely=0.31, anchor=W)
+
+        self.menuMethod = tk.Menubutton(self.top2, text="Forward Folding", relief="raised")
+        self.menuMethod.place(relx=0.78, rely=0.31, anchor=W, relheight=0.035, relwidth=0.20)
+
+        self.menuMethod.menu = tk.Menu(self.menuMethod, tearoff=0)
+        self.menuMethod["menu"] = self.menuMethod.menu
+        for method_name in ["Forward Folding", "CNN"]:
+            self.menuMethod.menu.add_command(
+                label=method_name,
+                command=lambda n=method_name: Set_Method(n))
+
         self.user_param_bounds = {}  # bounds set by user in Set_Function
         self.user_param_values = {}  # initial values set by user in Set_Function
         self.user_param_modified = {}  # True if user modified bounds/values from default
 
-        Label(self.top2, text="Set function components: ").place(relx=0.65, rely=0.30)
+        Label(self.top2, text="Set function components: ").place(relx=0.65, rely=0.36)
 
-        Button(self.top2, text="Function value(s)", command=self.Set_Function).place(relx=0.65, rely=0.35, relheight=0.05,
-                                                                                     relwidth=0.13)
+        self.btn_function_values = Button(self.top2, text="Function value(s)", command=self.Set_Function)
+        self.btn_function_values.place(relx=0.65, rely=0.41, relheight=0.05, relwidth=0.13)
 
         self.statname = "Chi2"
 
@@ -199,10 +225,10 @@ class Fitting:
             self.statname = name
             self.menuStat.config(text=name)
 
-        Label(self.top2, text="Set statistics:").place(relx=0.85, rely=0.30)
+        Label(self.top2, text="Set statistics:").place(relx=0.85, rely=0.36)
 
         self.menuStat = tk.Menubutton(self.top2, text="Chi2", relief="raised")
-        self.menuStat.place(relx=0.85, rely=0.35, relheight=0.05, relwidth=0.13)
+        self.menuStat.place(relx=0.85, rely=0.41, relheight=0.05, relwidth=0.13)
 
         self.menuStat.menu = tk.Menu(self.menuStat, tearoff=0)
         self.menuStat["menu"] = self.menuStat.menu
@@ -213,14 +239,14 @@ class Fitting:
 
         # Energies range(s) to fit
 
-        Label(self.top2, text="Min energy").place(relx=0.75, rely=0.45, anchor=N)
-        Label(self.top2, text="Max energy").place(relx=0.85, rely=0.45, anchor=N)
+        Label(self.top2, text="Min energy").place(relx=0.75, rely=0.51, anchor=N)
+        Label(self.top2, text="Max energy").place(relx=0.85, rely=0.51, anchor=N)
 
         self.energy_min2 = OptionMenu(self.top2, self.energy_min_var, [0])
         self.energy_max2 = OptionMenu(self.top2, self.energy_max_var, [0])
 
-        self.energy_min2.place(relx=0.75, rely=0.50, anchor=N)
-        self.energy_max2.place(relx=0.85, rely=0.50, anchor=N)
+        self.energy_min2.place(relx=0.75, rely=0.56, anchor=N)
+        self.energy_max2.place(relx=0.85, rely=0.56, anchor=N)
 
         # ============== Main window description ==============
         """ 
@@ -301,7 +327,7 @@ class Fitting:
         Button(self.top2, text="Close", command=lambda: self.top2.destroy()).place(relx=0.5, rely=0.94)
         self.models = ['PowerLaw1D', 'BrokenPowerLaw1D', 'Single Power Law Times an Exponential', 'V_TH',
                        'V_TH + PowerLaw', 'PowerLawCutoffFix', 'PowerLawCutoffFree',
-                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree", "Neural Network"]  # , 'Neural Network' function names
+                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree"]  # Forward Folding models only; CNN is chosen via "Set method"
         for p in self.models:
             """On the right: place an 'entry text' Scrollbar widget (scrollbar) When user highlight the function, 
             displays the text information about function description and input parameters"""
@@ -359,7 +385,6 @@ class Fitting:
                                 'Alpha - Power law index',
                                 'Epivot – energie pivot (kEv)'
                                 ],
-            'Neural Network': ['Neural Network model', ],
             'PowerLawCutoffFix': ['Power law model with fix cutoff',
                                   'amplitude – model amplitude at the reference energy',
                                   'Ec – Cutoff energy',
@@ -1045,7 +1070,9 @@ class Fitting:
     def _selective_fit(self):
         """
         Main entry point for the 'Do Fit' button. Orchestrates the whole
-        fitting pipeline for the model selected in the listbox.
+        fitting pipeline for the method selected via 'Set method' — either
+        Forward Folding (using the model selected in the listbox) or CNN
+        (the pre-trained neural network reconstruction).
 
         Internal steps:
         1) Retrieves and prepares the data (optional background
@@ -1053,8 +1080,10 @@ class Fitting:
         2) Computes the count rate, errors, and flux according to the
            selected unit (Rate / Counts / Flux).
         3) Applies the mask over the energy range [fit_Emin, fit_Emax].
-        4) Runs the fit via fit_unconstrained_then_bounded() or
-           fit_with_bounds_check() depending on the model.
+        4) For Forward Folding: runs the fit via
+           fit_unconstrained_then_bounded() or fit_with_bounds_check()
+           depending on the model. For CNN: runs inference directly, no
+           model selection needed.
         5) Reconstructs the model over the full domain for display.
         6) Displays the main plot (data + model) and, optionally,
            the deconvolved photon spectrum.
@@ -1063,11 +1092,14 @@ class Fitting:
         -------
         None
         """
-        selection = self.lbox.curselection()
-        if not selection:
-            messagebox.showwarning("No Model Selected",
-                                   "Please select a fit model before clicking 'Do Fit'.")
-            return
+        use_cnn = self.method_var == "CNN"
+
+        if not use_cnn:
+            selection = self.lbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Model Selected",
+                                       "Please select a fit model before clicking 'Do Fit'.")
+                return
 
         if self.fname is None and self.rname is None:
             messagebox.showwarning("No File Selected", "Please, choose input file.")
@@ -1160,12 +1192,14 @@ class Fitting:
                      verticalalignment='top',
                      bbox=dict(facecolor='white', alpha=0.7))
 
+        method_label = "CNN" if use_cnn else self.statname
+
         def finalize_main_plot():
             plt.xscale('log')
             plt.yscale('log')
             plt.xlabel("Channel Energy (keV)")
             plt.ylabel(y_label)
-            plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
+            plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {method_label}")
             if self.grid_var.get():
                 plt.grid(True, which="both", ls="--", alpha=0.5)
             else:
@@ -1222,12 +1256,43 @@ class Fitting:
         plt.step(edges_det[:-1], y_data, where='post',
                  label=f'{absolute_name} ({unit})', color='red')
 
-        idx = self.lbox.curselection()[0]
+        idx = None if use_cnn else self.lbox.curselection()[0]
+
+        # ══════════════════════════════════════════════════════════
+        #  CNN — Neural Network
+        # ══════════════════════════════════════════════════════════
+        if use_cnn:
+            nn_model = NeuralNetModel.load(path="data/nn_powerlaw_150k.pt", device="cpu")
+
+            photon_flux = nn_model.predict(counts, srm=matrix)
+
+            folded = (np.asarray(matrix).T @ photon_flux) / exposure
+            model_y = to_unit(folded)
+            plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
+
+            e_true = 0.5 * (np.asarray(e_low_true) + np.asarray(e_high_true))
+
+            mask_true = (e_true >= fit_Emin) & (e_true <= fit_Emax)
+
+            valid_pl = (photon_flux > 0) & (e_true > 0) & mask_true
+            nn_alpha, nn_amplitude = np.nan, np.nan
+            if valid_pl.sum() >= 2:
+                slope, intercept = np.polyfit(
+                    np.log(e_true[valid_pl]), np.log(photon_flux[valid_pl]), 1)
+                nn_alpha = -slope
+                nn_amplitude = np.exp(intercept)
+
+            photon_flux_display = np.where(mask_true, photon_flux, np.nan)
+
+            param_text = (f"Neural Network (effective power law):\n"
+                          f" amplitude = {nn_amplitude:.2e}\n alpha = {nn_alpha:.2f}\n")
+            if self.show_params_var.get():
+                add_param_text(param_text)
 
         # ══════════════════════════════════════════════════════════
         #  0 — Power Law
         # ══════════════════════════════════════════════════════════
-        if idx == 0:
+        elif idx == 0:
             model_key = "PowerLaw1D"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
@@ -1705,42 +1770,9 @@ class Fitting:
 
                 model_func_photon = model_total
 
-        # ══════════════════════════════════════════════════════════
-        #  9 - Neural Network
-        # ══════════════════════════════════════════════════════════
-
-        elif idx == 9:
-            model_key = "Neural Network"
-            nn_model = NeuralNetModel.load(path="data/nn_powerlaw_150k.pt", device="cpu")
-
-            photon_flux = nn_model.predict(counts, srm=matrix)
-
-            folded = (np.asarray(matrix).T @ photon_flux) / exposure
-            model_y = to_unit(folded)
-            plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
-
-            e_true = 0.5 * (np.asarray(e_low_true) + np.asarray(e_high_true))
-
-            mask_true = (e_true >= fit_Emin) & (e_true <= fit_Emax)
-
-            valid_pl = (photon_flux > 0) & (e_true > 0) & mask_true
-            nn_alpha, nn_amplitude = np.nan, np.nan
-            if valid_pl.sum() >= 2:
-                slope, intercept = np.polyfit(
-                    np.log(e_true[valid_pl]), np.log(photon_flux[valid_pl]), 1)
-                nn_alpha = -slope
-                nn_amplitude = np.exp(intercept)
-
-            photon_flux_display = np.where(mask_true, photon_flux, np.nan)
-
-            param_text = (f"Neural Network (effective power law):\n"
-                          f" amplitude = {nn_amplitude:.2e}\n alpha = {nn_alpha:.2f}\n")
-            if self.show_params_var.get():
-                add_param_text(param_text)
-
         finalize_main_plot()
         if self.show_photon_var.get():
-            if idx == 9:
+            if use_cnn:
                 plot_photon_discrete(photon_flux_display, param_text)
             else:
                 plot_photon(model_func_photon, param_text)
