@@ -19,7 +19,7 @@
 
 """
 
-# Importations
+# Imports
 import webbrowser
 from tkinter import *
 from tkinter import messagebox
@@ -51,7 +51,7 @@ def ResponseFitting():
 
 
 def STIX_Guide():
-    """Opens up HTML version of the OSPEX documentation using default browser."""
+    """Opens the STIX instrument description page in the default browser."""
     url2 = "https://lesia.obspm.fr/STIX-description-de-l-instrument.html"
     webbrowser.open(url2)
 
@@ -77,7 +77,6 @@ def clickedHelp_on_Help():
 
 root = Tk()
 root.title('STIX Main Window')
-# root.iconbitmap(r"/home/stage/PycharmProjects/testing/Rhessi.ico")
 root.geometry("500x600")
 mainmenu = Menu(root)
 root.config(menu=mainmenu)
@@ -109,7 +108,6 @@ filemenu = Menu(mainmenu, tearoff=0)
 windowmenu = Menu(mainmenu, tearoff=0)
 helpmenu = Menu(mainmenu, tearoff=0)
 
-# Dans la construction du menu :
 filemenu.add_command(label="Download STIX Data...", command=SelectDownload)
 
 filemenu.add_command(label="Select Input ...", command=SelectInput)

@@ -2,7 +2,7 @@ from tkinter import *
 
 
 def open_user_guide():
-    """Ouvre la fenêtre User Guide."""
+    """Opens the User Guide window."""
     guide = Toplevel(background="#f7f9fc")
     guide.title("User Guide")
     guide.geometry("700x600")
@@ -27,47 +27,99 @@ def open_user_guide():
     text.pack(fill=BOTH, expand=True)
     scrollbar.config(command=text.yview)
 
-    # --- Tags de mise en forme ---
+    # --- Formatting tags ---
     text.tag_config("title", font=("Helvetica", 13, "bold"), spacing3=6)
     text.tag_config("heading", font=("Helvetica", 11, "bold"), spacing1=10, spacing3=3)
     text.tag_config("subhead", font=("Helvetica", 10, "bold italic"), spacing1=6)
     text.tag_config("body", font=("Helvetica", 10), spacing1=2)
     text.tag_config("note", font=("Helvetica", 9, "italic"), foreground="#555555")
 
-    # --- Contenu ---
+    # --- Content ---
     content = [
         ("title", "STIX Spectral Data Analysis Package — User Guide\n"),
 
         ("heading", "1. General Workflow\n"),
         ("body",
-         "The analysis follows three successive steps, accessible from the "
-         "File menu of the main window.\n"),
+         "The analysis follows four steps, accessible from the File menu of "
+         "the main window. Step 1 is optional if you already have local "
+         "spectrum and SRM FITS files.\n"),
 
-        ("subhead", "Step 1 — Select Input\n"),
+        ("subhead", "Step 1 — Download STIX Data (optional)\n"),
         ("body",
-         "Load a STIX spectrum FITS file and a response matrix FITS file (SRM). "
-         "Data are displayed as a time profile or spectrogram. "
-         "The display unit is selectable: Rate (counts/s), Counts (raw counts) "
-         "or Flux (photons cm⁻² s⁻¹ keV⁻¹).\n"),
+         "Query the STIX Data Center for a data product (currently: L1A "
+         "Spectrogram) over a UTC start/end time range. Matching files are "
+         "downloaded and, if more than one is found, automatically merged "
+         "(overlapping time steps averaged, gaps filled with NaN) into a "
+         "single FITS file saved to the chosen output directory.\n"),
+        ("note",
+         "The downloaded file is not selected automatically — load it via "
+         "'Browse ->' in the steps below.\n"),
 
-        ("subhead", "Step 2 — Select Background\n"),
+        ("subhead", "Step 2 — Select Input\n"),
         ("body",
-         "Select a time interval outside the event (before or after the flare) "
-         "as a background reference. The selection can be made manually "
-         "(by entering dates) or graphically on the time profile. "
-         "The estimation method is chosen per energy band from: "
-         "Median, Mean, 1Poly, 2Poly, 3Poly, Exp.\n"),
+         "Load a STIX spectrum FITS file. By default the entire file is used; "
+         "untick 'Entire file' to restrict plotting to a custom start/end "
+         "date range. Three plot types are available: Plot Spectrum "
+         "(Rate/Counts/Flux vs energy), Plot Time Profile (vs time), and "
+         "Plot Spectrogram (energy vs time), each in the selected display "
+         "unit — Rate (counts/s), Counts (raw counts), or Flux "
+         "(photons cm⁻² s⁻¹ keV⁻¹). 'Summarize' shows a short overview "
+         "(time range, energy range, detectors); 'Show Header' displays the "
+         "raw FITS header.\n"),
 
-        ("subhead", "Step 3 — Plot Fit Results\n"),
+        ("subhead", "Step 3 — Select Background\n"),
         ("body",
-         "Select a spectral model, configure initial values and bounds via "
-         "'Function value(s)', choose the fit statistic (Chi² or C-stat), "
-         "define the energy range to fit, then click 'Do Fit'. "
-         "The fitted parameters are displayed on the plot. "
-         "The 'Photon' option shows the deconvolved photon spectrum "
-         "in true energy space.\n"),
+         "Load a spectrum file (defaults to the one already selected), "
+         "choose 1 to 5 energy bands (with their own min/max energy), and "
+         "for each band pick a time interval outside the event (before or "
+         "after the flare) as a background reference — either by entering "
+         "dates directly, or graphically via the 'Time Profile' or "
+         "'Spectrogram' button. 'Same time interval for all bands' applies "
+         "the first band's interval to every band. The estimation method is "
+         "chosen per band from: Median, Mean, 1Poly, 2Poly, 3Poly, Exp. "
+         "'Plot Time Profile' then displays the Data, Background and/or "
+         "Data-Background curves (with optional error bars) in the selected "
+         "unit.\n"),
 
-        ("heading", "2. Available Spectral Models\n"),
+        ("subhead", "Step 4 — Plot Fit Results\n"),
+        ("body",
+         "Load a STIX spectrum FITS file and a response matrix FITS file "
+         "(SRM), then use 'Set method' to choose between Forward Folding and "
+         "CNN (see section 2 below). Define the energy range to fit, then "
+         "click 'Do Fit'. Enabling 'Data-Background' subtracts the "
+         "background computed in Step 3 (you will be prompted to open the "
+         "Background window first if it hasn't been run yet). The fitted "
+         "parameters are displayed on the plot when 'Display parameters' is "
+         "checked. The 'Photon' option shows the deconvolved photon spectrum "
+         "in true energy space, after choosing a linear or log scale for "
+         "each axis. 'Close Plots' closes all open figures.\n"),
+        ("note",
+         "With Forward Folding, also select a spectral model from the list, "
+         "configure initial values and bounds via 'Function value(s)', and "
+         "choose the fit statistic (Chi² or C-stat). These three controls "
+         "are disabled under CNN, which needs none of them.\n"),
+
+        ("heading", "2. Fitting Methods\n"),
+        ("body",
+         "'Set method' (Step 4) chooses how the photon spectrum is "
+         "reconstructed from the observed counts:\n"),
+
+        ("subhead", "Forward Folding\n"),
+        ("body",
+         "Fits one of the physical spectral models below to the data by "
+         "forward-folding it through the SRM. Requires selecting a model "
+         "from the list and a fit statistic.\n"),
+
+        ("subhead", "CNN\n"),
+        ("body",
+         "Reconstructs the photon spectrum Φ(E) directly from the observed "
+         "counts using a pre-trained neural network, without an explicit "
+         "forward-folding fit. No model selection, parameters, or fit "
+         "statistic; the SRM is provided to the network as a conditioning "
+         "input rather than fitted against.\n"
+         "Use case: fast, model-independent spectral reconstruction.\n"),
+
+        ("heading", "3. Available Spectral Models (Forward Folding)\n"),
 
         ("subhead", "Power Law\n"),
         ("body",
@@ -132,7 +184,7 @@ def open_user_guide():
          "Parameters: EM, T (thermal), amplitude, α, E_pivot, E_cut (optimised).\n"
          "Use case: flares where the thermal/non-thermal transition energy is unknown.\n"),
 
-        ("heading", "3. Fit Statistics\n"),
+        ("heading", "4. Fit Statistics (Forward Folding)\n"),
         ("subhead", "Chi² (default)\n"),
         ("body",
          "Minimisation of weighted residuals in the least-squares sense. "
@@ -146,14 +198,16 @@ def open_user_guide():
         ("note",
          "Both statistics use the Levenberg-Marquardt optimisation algorithm.\n"),
 
-        ("heading", "4. Display Options\n"),
+        ("heading", "5. Display Options\n"),
         ("body",
+         "Plot Units: selects Rate, Counts, or Flux for the data and model curves.\n"
          "Display parameters: shows the fitted parameters on the plot.\n"
          "Show grid: enables the log-log grid.\n"
          "Data-Background: subtracts the background before fitting "
-         "(requires Step 2 to have been completed).\n"
+         "(requires Step 3 to have been completed).\n"
          "Photon: displays the deconvolved photon spectrum in true energy space "
-         "(axis scale selectable on request).\n"),
+         "(axis scale selectable on request).\n"
+         "Close Plots: closes all open figure windows.\n"),
     ]
 
     for tag, txt in content:

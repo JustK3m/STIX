@@ -2,19 +2,15 @@
 
 import os
 import threading
-from fileinput import close
 from tkinter import *
 from tkinter import messagebox, filedialog
 from tkinter.ttk import Progressbar, Combobox
 from stixdcpy.net import FitsQuery
-from stixdcpy.science import spec_fits_concatenate
-from astropy.io import fits
-import numpy as np
 
 class STIXDownloader:
-    """Fenêtre tkinter pour télécharger des données STIX science via stixdcpy."""
+    """Tkinter window to download STIX science data via stixdcpy."""
 
-    # Types de produits disponibles via FitsQuery.query()
+    # Product types available via FitsQuery.query()
     PRODUCT_TYPES = {
         "Spectrogram L1A (xray-spec)":    ("xray-spec",   "L1A"),
     }
@@ -97,77 +93,6 @@ class STIXDownloader:
     def _start_download(self):
         threading.Thread(target=self._download, daemon=True).start()
 
-    # def _download(self):
-    #     # ── Vérification import ───────────────────────────────
-    #     try:
-    #         from stixdcpy.net import FitsQuery
-    #     except ImportError:
-    #         messagebox.showerror(
-    #             "Missing package",
-    #             "stixdcpy is not installed.\n\n"
-    #             "Install it with:\n"
-    #             "pip install stixdcpy"
-    #         )
-    #         return
-    #
-    #     start  = self.entry_start.get().strip()
-    #     end    = self.entry_end.get().strip()
-    #     outdir = self.entry_outdir.get().strip()
-    #     product_label = self.dtype_var.get()
-    #     product_type, level = self.PRODUCT_TYPES[product_label]
-    #
-    #     if not start or not end:
-    #         messagebox.showwarning("Missing input",
-    #                                "Please enter start and end times.")
-    #         return
-    #
-    #     os.makedirs(outdir, exist_ok=True)
-    #     FitsQuery.chdir(outdir)
-    #
-    #     self.progress.start(10)
-    #     self.status_var.set(f"Querying STIX Data Center ({product_type}, {level})...")
-    #     self.win.update_idletasks()
-    #     try:
-    #         # ── Requête ───────────────────────────────────────
-    #         results = FitsQuery.query(
-    #             begin_utc=start,
-    #             end_utc=end,
-    #             product_type=product_type,
-    #             level=level
-    #         )
-    #         results.result = [entry for entry in results.result if entry["level"] == level  ]
-    #         n = len(results)
-    #         if n == 0:
-    #             self.status_var.set("No files found.")
-    #             messagebox.showinfo(
-    #                 "No data found",
-    #                 f"No {product_label} data found between\n{start}\nand {end}.\n\n"
-    #                 "Try a broader range or check:\n"
-    #                 "https://datacenter.stix.i4ds.net"
-    #             )
-    #             return
-    #
-    #         self.status_var.set(f"Found {n} file(s). Downloading...")
-    #         self.win.update_idletasks()
-    #
-    #         # ── Téléchargement ────────────────────────────────
-    #         downloaded = FitsQuery.fetch(results.result)
-    #         downloaded = [f for f in downloaded if f is not None]
-    #
-    #         self.status_var.set(
-    #             f"Done — {len(downloaded)} file(s) saved to {outdir}")
-    #         messagebox.showinfo(
-    #             "Download complete",
-    #             f"{len(downloaded)} file(s) saved to:\n{outdir}\n\n"
-    #             + "\n".join(os.path.basename(f) for f in downloaded))
-    #
-    #     except Exception as e:
-    #         self.status_var.set(f"Error: {e}")
-    #         messagebox.showerror("Download error", str(e))
-    #
-    #     finally:
-    #         self.progress.stop()
-
     def _download(self):
 
         start = self.entry_start.get().strip()
@@ -210,7 +135,7 @@ class STIXDownloader:
 
             downloaded = FitsQuery.fetch(results.result)
 
-            # ── Concaténation si plusieurs fichiers ───────────────────────────
+            # ── Concatenation if multiple files ───────────────────────────
             if len(downloaded) == 1:
                 self.status_var.set(f"Done — 1 file saved to {outdir}")
 
@@ -244,30 +169,30 @@ class STIXDownloader:
 
     def merge_stix_fits(self, start, end, file_list, outfile):
         """
-        Fusionne une liste de fichiers FITS STIX L1A (xray-spec) en un seul fichier.
+        Merges a list of STIX L1A (xray-spec) FITS files into a single file.
 
-        Stratégie :
-            - Tri chronologique par temps absolu (MJDREF + time).
-            - Conversion de tous les temps en temps absolu (secondes) pour
-              comparaison inter-fichiers (chaque fichier a son propre MJDREF).
-            - Overlap : moyenne pondérée par timedel des counts et counts_comp_err
-              pour les pas de temps communs entre deux fichiers.
-            - Gap : les pas de temps manquants sont comblés par NaN.
-            - Le fichier de sortie utilise le MJDREF du premier fichier comme
-              référence commune, et tous les temps sont recalculés en conséquence.
+        Strategy:
+            - Chronological sort by absolute time (MJDREF + time).
+            - Convert all times to absolute time (seconds) for
+              cross-file comparison (each file has its own MJDREF).
+            - Overlap: timedel-weighted average of counts and counts_comp_err
+              for time steps common to two files.
+            - Gap: missing time steps are filled with NaN.
+            - The output file uses the MJDREF of the first file as the
+              common reference, and all times are recomputed accordingly.
 
         Parameters
         ----------
         file_list : list of str
-            Liste des chemins FITS à fusionner.
+            List of FITS paths to merge.
         outfile : str
-            Chemin du fichier FITS de sortie.
+            Path of the output FITS file.
         """
         import numpy as np
         from astropy.io import fits
 
-        # ── 1. Lecture de tous les fichiers ───────────────────────────────────
-        all_data = []  # liste de dicts par fichier
+        # ── 1. Reading all files ───────────────────────────────────
+        all_data = []  # list of dicts per file
         ref_e_low = None
         ref_e_high = None
         primary_header = None
@@ -297,10 +222,10 @@ class STIXDownloader:
                 else:
                     if not (np.allclose(e_low, ref_e_low, equal_nan=True) and
                             np.allclose(e_high, ref_e_high, equal_nan=True)):
-                        raise ValueError(f"Grille d'énergie incompatible : {fpath}")
+                        raise ValueError(f"Incompatible energy grid: {fpath}")
 
                 d = hdul['DATA'].data
-                # Temps absolu en secondes pour comparaison inter-fichiers
+                # Absolute time in seconds for cross-file comparison
                 t_abs = mjdref * 86400.0 + d['time'].copy()
 
                 all_data.append({
@@ -311,16 +236,16 @@ class STIXDownloader:
                     'mjdref': mjdref,
                 })
 
-        # ── 3. Construction de la timeline fusionnée ───────────────────────────
-        # On empile tous les (t_abs, timedel, counts, counts_comp_err) de tous
-        # les fichiers, puis on gère overlaps et gaps sur cette base commune.
+        # ── 2. Building the merged timeline ───────────────────────────
+        # We stack all the (t_abs, timedel, counts, counts_comp_err) from every
+        # file, then handle overlaps and gaps on this common basis.
 
         all_t = np.concatenate([d['t_abs'] for d in all_data])
         all_td = np.concatenate([d['timedel'] for d in all_data])
         all_counts = np.concatenate([d['counts'] for d in all_data], axis=0)
         all_err = np.concatenate([d['counts_comp_err'] for d in all_data], axis=0)
 
-        # Tri global chronologique
+        # Global chronological sort
         sort_idx = np.argsort(all_t, kind='stable')
         all_t = all_t[sort_idx]
         all_td = all_td[sort_idx]
@@ -329,12 +254,12 @@ class STIXDownloader:
 
         n_energy = all_counts.shape[1]
 
-        # ── 4. Fusion des overlaps par moyenne pondérée ────────────────────────
-        # Deux pas de temps i et j sont en overlap si leurs intervalles
-        # [t-td/2, t+td/2] se chevauchent. On groupe les pas de temps proches
-        # (tolérance = moitié du plus petit timedel) et on les moyenne.
+        # ── 3. Merging overlaps by weighted average ────────────────────────
+        # Two time steps i and j overlap if their intervals
+        # [t-td/2, t+td/2] intersect. We group nearby time steps
+        # (tolerance = half of the smallest timedel) and average them.
 
-        tol = 0.5 * np.min(all_td)  # tolérance de groupement (~0.25 s)
+        tol = 0.5 * np.min(all_td)  # grouping tolerance (~0.25 s)
 
         merged_t = []
         merged_td = []
@@ -344,7 +269,7 @@ class STIXDownloader:
         i = 0
         N = len(all_t)
         while i < N:
-            # Groupe : tous les pas de temps dans [t_i - tol, t_i + tol]
+            # Group: all time steps within [t_i - tol, t_i + tol]
             group = [i]
             j = i + 1
             while j < N and abs(all_t[j] - all_t[i]) <= tol:
@@ -352,13 +277,13 @@ class STIXDownloader:
                 j += 1
 
             if len(group) == 1:
-                # Pas d'overlap : on prend directement
+                # No overlap: use it directly
                 merged_t.append(all_t[i])
                 merged_td.append(all_td[i])
                 merged_counts.append(all_counts[i])
                 merged_err.append(all_err[i])
             else:
-                # Overlap : moyenne pondérée par timedel
+                # Overlap: timedel-weighted average
                 g_idx = np.array(group)
                 weights = all_td[g_idx]  # shape (n_group,)
                 w_sum = weights.sum()
@@ -366,11 +291,11 @@ class STIXDownloader:
                 t_avg = float(np.sum(weights * all_t[g_idx]) / w_sum)
                 td_avg = float(np.sum(weights * all_td[g_idx]) / w_sum)
 
-                # counts : moyenne pondérée — shape (n_group, n_energy)
+                # counts: weighted average — shape (n_group, n_energy)
                 c_avg = (np.sum(all_counts[g_idx] * weights[:, np.newaxis], axis=0)
                          / w_sum)
 
-                # counts_comp_err : propagation quadratique pondérée
+                # counts_comp_err: weighted quadrature propagation
                 e_avg = (np.sqrt(np.sum((weights[:, np.newaxis] * all_err[g_idx]) ** 2,
                                         axis=0))
                          / w_sum)
@@ -387,9 +312,9 @@ class STIXDownloader:
         merged_counts = np.array(merged_counts)
         merged_err = np.array(merged_err)
 
-        # ── 5. Détection et remplissage des gaps par NaN ───────────────────────
-        # Un gap est détecté quand l'écart entre deux pas de temps consécutifs
-        # est supérieur à 2 * max(timedel[i], timedel[i+1]).
+        # ── 4. Detecting and filling gaps with NaN ───────────────────────
+        # A gap is detected when the spacing between two consecutive time steps
+        # exceeds 2 * max(timedel[i], timedel[i+1]).
 
         final_t = [merged_t[0]]
         final_td = [merged_td[0]]
@@ -401,7 +326,7 @@ class STIXDownloader:
             gap_thr = 2.0 * max(merged_td[i - 1], merged_td[i])
 
             if dt > gap_thr:
-                # Remplissage du gap par NaN avec un pas synthétique
+                # Fill the gap with NaN using a synthetic step
                 gap_step = merged_td[i - 1]
                 t_fill = merged_t[i - 1] + gap_step
                 while t_fill < merged_t[i] - gap_step / 2:
@@ -421,10 +346,10 @@ class STIXDownloader:
         final_counts = np.array(final_counts)
         final_err = np.array(final_err)
 
-        # ── 6. Reconversion en temps relatif au MJDREF de référence ───────────
+        # ── 5. Converting back to time relative to the reference MJDREF ───────────
         time_rel = final_t - ref_mjdref * 86400.0
 
-        # ── 7. Construction des HDUs et écriture unique ────────────────────────
+        # ── 6. Building the HDUs and writing the output once ────────────────────────
         n_steps = len(final_t)
 
         col_data = fits.ColDefs([
@@ -459,6 +384,6 @@ class STIXDownloader:
         hdul_out.close()
 
         n_gap = len(final_t) - len(merged_t)
-        print(f"[merge_stix_fits] {len(file_list)} fichiers | "
-              f"{len(final_t)} pas de temps "
-              f"({len(merged_t)} après overlap, {n_gap} NaN de gap) → {outfile}")
+        print(f"[merge_stix_fits] {len(file_list)} files | "
+              f"{len(final_t)} time steps "
+              f"({len(merged_t)} after overlap, {n_gap} gap NaNs) → {outfile}")

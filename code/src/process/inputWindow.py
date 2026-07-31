@@ -22,7 +22,7 @@ _PLOT_DISPATCH = {
 
 class InputWindow:
     """Class to create "Select Plotting Window" menu option in STIX.
-    Rout: Go to top menu bars -> File -> Select Plotting.
+    Route: Go to top menu bars -> File -> Select Plotting.
     Initiates the parameters and widgets"""
 
 
@@ -35,11 +35,10 @@ class InputWindow:
         self.e_high = None
         self.e_low = None
         self.top1 = Toplevel()
-        self.top1.title('STIX Plotting Options')
+        self.top1.title('STIX Input Options')
         self.top1.geometry("1000x400")
-        Label(self.top1, text="Select Plotting", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
+        Label(self.top1, text="Select Input", fg="red", font="Helvetica 12 bold italic").place(relx=0.5, rely=0.01,
                                                                                                   anchor=N)
-        # Creates a window to inform user hdul is empty
         self.hdul = None
         self.root = root
 
@@ -73,7 +72,7 @@ class InputWindow:
         self.chkBtEntireFile.place(relx=0.03, rely=0.37)
         self.chkBtEntireFile.select()
 
-        # Open file
+        # Data containers, populated once a file is opened
         self.evt_data = Table()
         self.energies = Table()
         self.data_file = None
@@ -107,8 +106,8 @@ class InputWindow:
         self.textEnd.place(relx=0.59, rely=0.55, height=33, width=190)
         self.textEnd['state'] = 'disabled'
 
-        # "Summarize" button. When clicked, creates a new window with the name "SPEX::PREVIEW,
-        # then gives information from self.hdul[1].header.
+        # "Summarize" button. When clicked, creates a new window named "SPEX::PREVIEW"
+        # showing a summary built from self.headers and self.data.
         Button(self.frame1, text="Summarize", command=self.summarize).place(relx=0.45, rely=0.81, anchor=NE)
 
         # "Show Header" button. When clicked, gives the information from primary_header = hdulist[0].header.
@@ -205,7 +204,6 @@ class InputWindow:
                "\n#Energy Bins: ", self.energie_summarize[0],
                "\nEnergy range: ", self.energie_summarize[1], ' to ', self.energie_summarize[2],
                "\nDetectors Used: ", self.detector_summarize[0]]
-        #    ,"\nResponse Info: ", self.name]
         liste = Text(frameSummarize)
         for t in txt:
             liste.insert(END, t)
@@ -226,7 +224,7 @@ class InputWindow:
             header.insert(INSERT, self.header_primary.cards[i])
             header.insert(INSERT, "\n")
 
-        header.insert(END, "Fin")
+        header.insert(END, "End")
         header.config(state=DISABLED)
         header.pack()
         scrollbar1.config(command=header.yview)

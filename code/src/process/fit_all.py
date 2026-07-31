@@ -1,4 +1,5 @@
 import copy
+import os.path
 import tkinter as tk
 from tkinter import *
 from tkinter import messagebox
@@ -8,10 +9,11 @@ from astropy.modeling.fitting import LevMarLSQFitter
 from matplotlib import pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 from scipy.optimize import minimize_scalar
+import numpy as np
 
 from . import background
 from .fitting.fitters import LevMarCstatFitter
-from .fitting.methods.ForwardFolded import *
+from .fitting.methods import *
 from .io import get_data, get_srm_data, loader
 
 register_matplotlib_converters()
@@ -19,26 +21,26 @@ register_matplotlib_converters()
 
 class Fitting:
     """
-    Classe principale de la fenêtre d'ajustement spectral ('SPEX Fit Options').
+    Main class for the spectral fitting window ('SPEX Fit Options').
 
-    Gère le chargement des fichiers FITS (spectre et matrice de réponse),
-    la sélection du modèle, la configuration des paramètres, l'exécution
-    de l'ajustement par forward-folding et l'affichage des résultats.
+    Handles loading the FITS files (spectrum and response matrix),
+    model selection, parameter configuration, running the forward-folding
+    fit, and displaying the results.
 
     Class attributes
     ----------------
     fname : str
-        Chemin par défaut vers le fichier FITS de spectre.
+        Default path to the spectrum FITS file.
     rname : str
-        Chemin par défaut vers le fichier FITS de la SRM.
+        Default path to the SRM FITS file.
     default_param_bounds : dict
-        Bornes par défaut {nom_modele: {param: (min, max)}} pour chaque
-        modèle disponible.
+        Default bounds {model_name: {param: (min, max)}} for each
+        available model.
     default_param_values : dict
-        Valeurs initiales par défaut {nom_modele: {param: valeur}}.
+        Default initial values {model_name: {param: value}}.
     """
 
-    # ── Bornes par défaut ──────────────────────────────────────
+    # ── Default bounds ──────────────────────────────────────
     default_param_bounds = {
         "PowerLaw1D": {"amplitude": (None, None), "alpha": (None, None)},
         "BrokenPowerLaw1D": {"amplitude": (1e-5, 1e3), "E_break": (1.0, 100.0),
@@ -57,7 +59,7 @@ class Fitting:
                                       "amplitude": (1e-12, 1e6), "alpha": (0.1, 50.0)},
     }
 
-    # ── Valeurs initiales par défaut ───────────────────────────
+    # ── Default initial values ───────────────────────────
     default_param_values = {
         "PowerLaw1D": {"amplitude": 1e-2, "alpha": 2.0, "E_pivot": 100.0},
         "BrokenPowerLaw1D": {"amplitude": 1e-2, "E_break": 10.0,
@@ -81,44 +83,48 @@ class Fitting:
     # create a new window called 'SPEX Fit Options'
     def __init__(self, root):
         """
-        Crée la fenêtre 'SPEX Fit Options' et initialise tous les widgets
-        (listbox des modèles, champs de fichier, menus d'énergie, boutons)
-        ainsi que les attributs d'état internes.
+        Creates the 'SPEX Fit Options' window and initialises all the
+        widgets (model listbox, file fields, energy menus, buttons)
+        as well as the internal state attributes.
 
         Parameters
         ----------
         root : tk.Tk or tk.Toplevel
-            Fenêtre parente tkinter.
+            Parent tkinter window.
 
         Key instance attributes
         -----------------------
         counts : ndarray, shape (T, C)
-            Matrice de comptages bruts (pas de temps x canaux).
+            Raw counts matrix (time steps x channels).
         counts_err : ndarray, shape (T, C)
-            Matrice des erreurs associées.
+            Associated error matrix.
         times : array-like, shape (T,)
-            Temps de chaque pas (s depuis epoch).
+            Time of each step (s since epoch).
         time_del : array-like, shape (T,)
-            Durée de chaque pas de temps (s).
+            Duration of each time step (s).
         e_low_det, e_high_det : ndarray, shape (C,)
-            Bornes des canaux mesurés par le détecteur (keV).
+            Bounds of the channels measured by the detector (keV).
         e_low_true, e_high_true : ndarray, shape (N,)
-            Bornes des bins en énergie vraie de la SRM (keV).
+            Bounds of the SRM's true-energy bins (keV).
         matrix : ndarray, shape (N, M)
-            Matrice de réponse instrumentale (SRM).
+            Instrument response matrix (SRM).
+        method_var : str
+            Active fitting method, "Forward Folding" (default) or "CNN",
+            set via the "Set method" control.
         fitter : astropy fitter
-            Instance du fitter actif (LevMarLSQFitter par défaut,
-            LevMarCstatFitter si C-stat sélectionné).
+            Active fitter instance (LevMarLSQFitter by default,
+            LevMarCstatFitter if C-stat is selected). Only used when
+            method_var is "Forward Folding".
         user_param_values : dict
-            Valeurs initiales définies par l'utilisateur via Set Function.
+            Initial values set by the user via Set Function.
         user_param_bounds : dict
-            Bornes définies par l'utilisateur via Set Function.
+            Bounds set by the user via Set Function.
         """
         self.sender = None
 
         self.top2 = Toplevel()
         self.top2.title('SPEX Fit Options')  # title of the window
-        self.top2.geometry("1000x600")  # size of the new window
+        self.top2.geometry("1000x650")  # size of the new window (widened for the Set method control)
 
         self.fname = loader.activeFile()
         self.rname = loader.activeSRMfile()  # # Name of the .fits file imported (response matrix)
@@ -153,6 +159,18 @@ class Fitting:
         Label(self.top2, text="Choose the files and energy range:", fg='blue',
               font=("Helvetica", 11, "bold")).place(relx=0.65, rely=0.07)  # set the position
 
+        # Fitting method: Forward Folding (physical models below) or CNN
+        self.method_var = "Forward Folding"
+
+        def Set_Method(name):
+            self.method_var = name
+            self.menuMethod.config(text=name)
+            state = DISABLED if name == "CNN" else NORMAL
+            self.lbox.config(state=state)
+            self.btn_function_values.config(state=state)
+            self.menuStat.config(state=state)
+
+
         # Spectrum: file name
         Label(self.top2, text="Spectrum: ").place(relx=0.65, rely=0.2, anchor=W)
         self.text_filename = Entry(self.top2, width=30)
@@ -178,14 +196,26 @@ class Fitting:
 
         Button(self.top2, text='Browse ->', command=self.open_srm_file).place(relx=0.92, rely=0.25, anchor=W)
 
+        Label(self.top2, text="Set method:").place(relx=0.65, rely=0.31, anchor=W)
+
+        self.menuMethod = tk.Menubutton(self.top2, text="Forward Folding", relief="raised")
+        self.menuMethod.place(relx=0.78, rely=0.31, anchor=W, relheight=0.035, relwidth=0.20)
+
+        self.menuMethod.menu = tk.Menu(self.menuMethod, tearoff=0)
+        self.menuMethod["menu"] = self.menuMethod.menu
+        for method_name in ["Forward Folding", "CNN"]:
+            self.menuMethod.menu.add_command(
+                label=method_name,
+                command=lambda n=method_name: Set_Method(n))
+
         self.user_param_bounds = {}  # bounds set by user in Set_Function
         self.user_param_values = {}  # initial values set by user in Set_Function
         self.user_param_modified = {}  # True if user modified bounds/values from default
 
-        Label(self.top2, text="Set function components: ").place(relx=0.65, rely=0.30)
+        Label(self.top2, text="Set function components: ").place(relx=0.65, rely=0.36)
 
-        Button(self.top2, text="Function value(s)", command=self.Set_Function).place(relx=0.65, rely=0.35, relheight=0.05,
-                                                                                     relwidth=0.13)
+        self.btn_function_values = Button(self.top2, text="Function value(s)", command=self.Set_Function)
+        self.btn_function_values.place(relx=0.65, rely=0.41, relheight=0.05, relwidth=0.13)
 
         self.statname = "Chi2"
 
@@ -195,10 +225,10 @@ class Fitting:
             self.statname = name
             self.menuStat.config(text=name)
 
-        Label(self.top2, text="Set statistics:").place(relx=0.85, rely=0.30)
+        Label(self.top2, text="Set statistics:").place(relx=0.85, rely=0.36)
 
         self.menuStat = tk.Menubutton(self.top2, text="Chi2", relief="raised")
-        self.menuStat.place(relx=0.85, rely=0.35, relheight=0.05, relwidth=0.13)
+        self.menuStat.place(relx=0.85, rely=0.41, relheight=0.05, relwidth=0.13)
 
         self.menuStat.menu = tk.Menu(self.menuStat, tearoff=0)
         self.menuStat["menu"] = self.menuStat.menu
@@ -209,14 +239,14 @@ class Fitting:
 
         # Energies range(s) to fit
 
-        Label(self.top2, text="Min energy").place(relx=0.75, rely=0.45, anchor=N)
-        Label(self.top2, text="Max energy").place(relx=0.85, rely=0.45, anchor=N)
+        Label(self.top2, text="Min energy").place(relx=0.75, rely=0.51, anchor=N)
+        Label(self.top2, text="Max energy").place(relx=0.85, rely=0.51, anchor=N)
 
         self.energy_min2 = OptionMenu(self.top2, self.energy_min_var, [0])
         self.energy_max2 = OptionMenu(self.top2, self.energy_max_var, [0])
 
-        self.energy_min2.place(relx=0.75, rely=0.50, anchor=N)
-        self.energy_max2.place(relx=0.85, rely=0.50, anchor=N)
+        self.energy_min2.place(relx=0.75, rely=0.56, anchor=N)
+        self.energy_max2.place(relx=0.85, rely=0.56, anchor=N)
 
         # ============== Main window description ==============
         """ 
@@ -250,7 +280,7 @@ class Fitting:
         OptionMenu(self.frameFit, self.var, *self.Component_choicesFit).place(relx=0.15, rely=0.38, relheight=0.23,
                                                                               relwidth=0.15)
 
-        self.show_params_var = IntVar(value=1)  # Par défaut cochée
+        self.show_params_var = IntVar(value=1)  # Checked by default
         Checkbutton(
             self.frameFit,
             text="Display parameters",
@@ -297,7 +327,7 @@ class Fitting:
         Button(self.top2, text="Close", command=lambda: self.top2.destroy()).place(relx=0.5, rely=0.94)
         self.models = ['PowerLaw1D', 'BrokenPowerLaw1D', 'Single Power Law Times an Exponential', 'V_TH',
                        'V_TH + PowerLaw', 'PowerLawCutoffFix', 'PowerLawCutoffFree',
-                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree"]  # , 'Neural Network' function names
+                       'V_TH x PowerLawCutoffFix', "V_TH x PowerLawCutoffFree"]  # Forward Folding models only; CNN is chosen via "Set method"
         for p in self.models:
             """On the right: place an 'entry text' Scrollbar widget (scrollbar) When user highlight the function, 
             displays the text information about function description and input parameters"""
@@ -355,7 +385,6 @@ class Fitting:
                                 'Alpha - Power law index',
                                 'Epivot – energie pivot (kEv)'
                                 ],
-            'Neural Network': ['Neural Network model', ],
             'PowerLawCutoffFix': ['Power law model with fix cutoff',
                                   'amplitude – model amplitude at the reference energy',
                                   'Ec – Cutoff energy',
@@ -412,7 +441,7 @@ class Fitting:
         saved_values = self.user_param_values.get(model_key, {})
         saved_bounds = self.user_param_bounds.get(model_key, {})
 
-        # Paramètres sans min/max (valeur seule)
+        # Parameters with no min/max (value only)
         VALUE_ONLY_PARAMS = {"E_pivot", "E_cut", "Ec_min", "Ec_max"}
         VALUE_ONLY_MODELS = {
             "PowerLaw1D", "V_TH + PowerLaw", "PowerLawCutoffFix",
@@ -452,7 +481,7 @@ class Fitting:
                 e = Entry(row, width=width)
                 e.pack(side="left", padx=6)
 
-            # Récupérer les entries créées (les 3 dernières dans row)
+            # Retrieve the entries just created (the last 3 in row)
             entries_in_row = [w for w in row.winfo_children()
                               if isinstance(w, Entry)]
             e_def, e_min, e_max = entries_in_row
@@ -525,18 +554,18 @@ class Fitting:
 
     def open_file(self, file=None):
         """
-        Ouvre et lit un fichier FITS de spectre STIX. Si un chemin est
-        fourni, le charge directement ; sinon ouvre une boîte de dialogue.
+        Opens and reads a STIX spectrum FITS file. If a path is
+        provided, loads it directly; otherwise opens a file dialog.
 
-        Met à jour : self.times, self.counts, self.counts_err,
+        Updates: self.times, self.counts, self.counts_err,
         self.e_low_det, self.e_high_det, self.time_del, self.fname.
-        Appelle self.update_energy_range() après chargement.
+        Calls self.update_energy_range() after loading.
 
         Parameters
         ----------
         file : str or None, optional
-            Chemin complet du fichier FITS. Si None, une boîte de
-            dialogue est ouverte.
+            Full path to the FITS file. If None, a file
+            dialog is opened.
 
         Returns
         -------
@@ -566,11 +595,11 @@ class Fitting:
 
     def open_srm_file(self, file=None):
         """
-        Met à jour les menus déroulants de sélection d'énergie (min/max)
-        à partir des canaux communs entre la SRM et les données détecteur.
+        Updates the energy selection dropdown menus (min/max) based
+        on the channels common to the SRM and the detector data.
 
-        N'effectue rien si e_low_det, e_high_det ou matrix ne sont pas
-        encore chargés.
+        Does nothing if e_low_det, e_high_det, or matrix are not yet
+        loaded.
 
         Returns
         -------
@@ -625,40 +654,40 @@ class Fitting:
 
     def onSelect(self, event):
         """
-        Callback déclenché lors d'une sélection dans la listbox des modèles.
-        Met à jour self.fit_model et affiche les informations du modèle
-        sélectionné dans la listbox d'information (en lecture seule).
+        Callback triggered when a selection is made in the model listbox.
+        Updates self.fit_model and displays the selected model's
+        information in the (read-only) info listbox.
 
         Parameters
         ----------
         event : tk.Event
-            Événement <<ListboxSelect>> généré par tkinter.
+            <<ListboxSelect>> event generated by tkinter.
 
         Returns
         -------
         None
         """
         try:
-            # Récupère l’index de la sélection
+            # Get the index of the selection
             selected_index = self.lbox.curselection()[0]
             selected_name = self.lbox.get(selected_index)
 
-            # Réactive temporairement la Listbox info
+            # Temporarily re-enable the info Listbox
             self.list_selection.config(state='normal')
             self.list_selection.delete(0, END)
 
-            # Récupère et insère les infos correspondantes
+            # Retrieve and insert the corresponding info
             if selected_name in self.list:
                 for line in self.list[selected_name]:
                     self.list_selection.insert(END, line)
             else:
-                self.list_selection.insert(END, "Aucune information disponible.")
+                self.list_selection.insert(END, "No information available.")
 
-            # Désactive la Listbox info (pour la rendre non cliquable)
+            # Disable the info Listbox (to make it non-clickable)
             self.list_selection.config(state='disabled')
 
         except Exception as e:
-            print("Erreur dans onSelect :", e)
+            print("Error in onSelect:", e)
 
     def ask_custom_yesno(title, message):
         win = Toplevel()
@@ -666,7 +695,7 @@ class Fitting:
         win.resizable(False, False)
         win.grab_set()  # modal
 
-        # Contenu
+        # Content
         Label(win, text=message, padx=20, pady=20, justify='center').pack()
 
         result = {"value": False}
@@ -696,11 +725,10 @@ class Fitting:
 
     def ask_photon_axes_scale(self):
         """
-        Ouvre une fenêtre popup modale permettant à l'utilisateur de choisir
-        l'échelle des axes X et Y ('linear' ou 'log') pour le graphe du flux
-        photonique.
+        Opens a modal popup window letting the user choose the X and Y
+        axis scale ('linear' or 'log') for the photon flux plot.
 
-        Les choix sont sauvegardés dans self.photon_xscale et
+        The choices are saved in self.photon_xscale and
         self.photon_yscale.
 
         Returns
@@ -716,11 +744,11 @@ class Fitting:
         popup = Toplevel(self.top2)
         popup.title("Photon Plot Axes")
 
-        # Taille désirée
+        # Desired size
         window_width = 400
         window_height = 200
 
-        # Calculer la position centrée
+        # Compute the centred position
         screen_width = popup.winfo_screenwidth()
         screen_height = popup.winfo_screenheight()
         pos_x = int((screen_width / 2) - (window_width / 2))
@@ -729,7 +757,7 @@ class Fitting:
         popup.geometry(f"{window_width}x{window_height}+{pos_x}+{pos_y}")
         popup.resizable(False, False)
 
-        # Interface utilisateur
+        # User interface
         Label(popup, text="Choose axes scale for photon model:", font=("Helvetica", 11, "bold")).pack(pady=10)
 
         Label(popup, text="X axis scale:").pack()
@@ -746,15 +774,15 @@ class Fitting:
 
     def on_background_check(self):
         """
-        Vérifie si un fond a été calculé lorsque la case 'Data-Background'
-        est cochée pour la première fois. Si aucun fond n'est disponible,
-        propose à l'utilisateur d'ouvrir la fenêtre BackgroundWindow.
+        Checks whether a background has been computed when the
+        'Data-Background' box is checked for the first time. If no
+        background is available, offers to open the BackgroundWindow.
 
         Returns
         -------
         None
         """
-        if self.show_db_var.get():  # Si check activé
+        if self.show_db_var.get():  # If checked
             if not background.BackgroundWindow.DATA_BKG_SELECTED:
                 answer = Fitting.ask_custom_yesno(
                     "Background Not Selected",
@@ -771,9 +799,9 @@ class Fitting:
 
     def on_background_clicked(self):
         """
-        Callback de la case 'Data-Background'. Gère les deux cas :
-        - Fond déjà calculé : propose de le recalculer.
-        - Fond absent : délègue à on_background_check().
+        Callback for the 'Data-Background' checkbox. Handles two cases:
+        - Background already computed: offers to recompute it.
+        - No background: delegates to on_background_check().
 
         Returns
         -------
@@ -796,37 +824,37 @@ class Fitting:
     def fit_unconstrained_then_bounded(self, model_template, x_fit, y_fit, y_err,
                                        param_names, bounds_map=None, initial_values=None):
         """
-        Stratégie d'ajustement en deux étapes :
-        1) Ajustement non-borné avec le fitter actif (LevMar).
-        2) Si le résultat sort des bornes utilisateur, relance un ajustement
-           borné (LevMar avec .min / .max appliqués sur les paramètres).
+        Two-step fitting strategy:
+        1) Unconstrained fit with the active fitter (LevMar).
+        2) If the result falls outside the user bounds, re-runs a bounded
+           fit (LevMar with .min / .max applied to the parameters).
 
         Parameters
         ----------
         model_template : astropy FittableModel
-            Modèle initial (modifié en place pour les valeurs initiales,
-            mais copié avant chaque fit).
+            Initial model (modified in place for the initial values,
+            but copied before each fit).
         x_fit : ndarray
-            Variable indépendante sur la plage d'ajustement (vecteur de 0
-            pour les modèles ForwardFolded).
+            Independent variable over the fit range (zero vector for
+            ForwardFolded models).
         y_fit : ndarray
-            Données observées sur la plage d'ajustement [coups s-1].
+            Observed data over the fit range [counts s-1].
         y_err : ndarray
-            Erreurs sur y_fit [coups s-1].
+            Errors on y_fit [counts s-1].
         param_names : list of str
-            Noms des paramètres libres du modèle.
+            Names of the model's free parameters.
         bounds_map : dict or None, optional
-            {param: (min, max)} — bornes à vérifier et appliquer en étape 2.
-            Si None, l'étape 2 est ignorée.
+            {param: (min, max)} — bounds to check and apply in step 2.
+            If None, step 2 is skipped.
         initial_values : dict or None, optional
-            {param: valeur_initiale} — valeurs de départ avant l'étape 1.
+            {param: initial_value} — starting values before step 1.
 
         Returns
         -------
         astropy FittableModel
-            Modèle avec les paramètres ajustés (étape 1 ou 2).
+            Model with fitted parameters (step 1 or 2).
         """
-        # Appliquer les valeurs initiales (sans poser de bornes)
+        # Apply the initial values (without setting bounds)
         if initial_values:
             for pname, val in initial_values.items():
                 if hasattr(model_template, pname):
@@ -835,7 +863,7 @@ class Fitting:
                     except Exception:
                         pass
 
-        # 1) Fit non-borné
+        # 1) Unconstrained fit
         try:
             fitted_nc = self.fitter(copy.deepcopy(model_template), x_fit, y_fit,
                                     weights=1.0 / (y_err + 1e-30))
@@ -843,17 +871,17 @@ class Fitting:
             print("⚠️ Unconstrained LevMar fit failed:", e)
             return copy.deepcopy(model_template)
 
-        # extraire les valeurs non-bornées
+        # extract the unconstrained values
         uncon_values = [getattr(fitted_nc, p).value for p in param_names]
 
-        # 2) Pas de bornes fournies -> utiliser solution non-bornée
+        # 2) No bounds provided -> use the unconstrained solution
         if not bounds_map:
             return fitted_nc
 
-        # 4) Sinon, fit borné via LevMarLSQFitter avec min/max
+        # 4) Otherwise, bounded fit via LevMarLSQFitter with min/max
         bounded_model = copy.deepcopy(model_template)
 
-        # appliquer les bornes sur chaque paramètre
+        # apply the bounds to each parameter
         for pname in param_names:
             if hasattr(bounded_model, pname):
                 par = getattr(bounded_model, pname)
@@ -863,7 +891,7 @@ class Fitting:
                 if hi is not None:
                     par.max = hi
 
-                # Priorité : valeur utilisateur > valeur par défaut > fit non-borné
+                # Priority: user value > default value > unconstrained fit
                 if initial_values and pname in initial_values:
                     par.value = initial_values[pname]
                 elif pname in Fitting.default_param_values.get(model_template.__class__.__name__, {}):
@@ -871,7 +899,7 @@ class Fitting:
                 else:
                     par.value = uncon_values[param_names.index(pname)]
 
-        # initialiser aux valeurs du fit non-borné
+        # initialise to the unconstrained fit values
         for i, pname in enumerate(param_names):
             if hasattr(bounded_model, pname):
                 getattr(bounded_model, pname).value = uncon_values[i]
@@ -889,39 +917,39 @@ class Fitting:
                               internal_bounds_map=None, user_bounds_map=None,
                               initial_values=None):
         """
-        Stratégie d'ajustement en deux étapes avec vérification explicite
-        des bornes utilisateur :
-        1) Ajustement avec les bornes internes (default_param_bounds).
-        2) Si le résultat viole les bornes utilisateur, relance avec les
-           bornes utilisateur via _fit_with_user_bounds_only().
+        Two-step fitting strategy with explicit checking of the user
+        bounds:
+        1) Fit with the internal bounds (default_param_bounds).
+        2) If the result violates the user bounds, re-runs with the
+           user bounds via _fit_with_user_bounds_only().
 
         Parameters
         ----------
         model_template : astropy FittableModel
-            Modèle initial.
+            Initial model.
         x_fit : ndarray
-            Variable indépendante sur la plage d'ajustement.
+            Independent variable over the fit range.
         y_fit : ndarray
-            Données observées [coups s-1].
+            Observed data [counts s-1].
         y_err : ndarray
-            Erreurs sur y_fit [coups s-1].
+            Errors on y_fit [counts s-1].
         param_names : list of str
-            Noms des paramètres libres.
+            Names of the free parameters.
         model_key : str
-            Clé du modèle dans les dictionnaires de bornes et valeurs.
+            Model key in the bounds and values dictionaries.
         internal_bounds_map : dict or None, optional
-            Bornes de l'étape 1 (défaut : default_param_bounds[model_key]).
+            Step 1 bounds (default: default_param_bounds[model_key]).
         user_bounds_map : dict or None, optional
-            Bornes de l'étape 2 (défaut : user_param_bounds[model_key]).
+            Step 2 bounds (default: user_param_bounds[model_key]).
         initial_values : dict or None, optional
-            Valeurs initiales (défaut : user_param_values[model_key]).
+            Initial values (default: user_param_values[model_key]).
 
         Returns
         -------
         astropy FittableModel
-            Modèle ajusté avec paramètres optimaux.
+            Model fitted with optimal parameters.
         """
-        # --- Maps par défaut ---
+        # --- Default maps ---
         if internal_bounds_map is None:
             internal_bounds_map = Fitting.default_param_bounds.get(model_key, {})
         if user_bounds_map is None:
@@ -929,7 +957,7 @@ class Fitting:
         if initial_values is None:
             initial_values = self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {}))
 
-        # --- Étape 0 : appliquer les valeurs initiales ---
+        # --- Step 0: apply the initial values ---
         try:
             for pname, val in initial_values.items():
                 if hasattr(model_template, pname):
@@ -937,7 +965,7 @@ class Fitting:
         except Exception:
             pass
 
-        # --- Étape 1 : modèle avec bornes internes ---
+        # --- Step 1: model with internal bounds ---
         model_step1 = copy.deepcopy(model_template)
         for pname in param_names:
             if hasattr(model_step1, pname):
@@ -961,7 +989,7 @@ class Fitting:
             return self._fit_with_user_bounds_only(model_template, x_fit, y_fit, y_err, param_names, user_bounds_map,
                                                    initial_values)
 
-        # --- Vérifier si fitted1 est dans les bornes utilisateur ---
+        # --- Check whether fitted1 is within the user bounds ---
         tol = 1e-12
         in_user_bounds = True
         for pname in param_names:
@@ -969,7 +997,7 @@ class Fitting:
                 continue
             attr = getattr(fitted1, pname)
             if isinstance(attr, (int, float, np.floating)):
-                # c'est un paramètre fixe → ignorer
+                # this is a fixed parameter → skip
                 continue
             val = attr.value
             lo, hi = user_bounds_map.get(pname, (None, None))
@@ -983,41 +1011,41 @@ class Fitting:
         if in_user_bounds:
             return fitted1
 
-        # --- Étape 2 : refit avec bornes utilisateur ---
+        # --- Step 2: refit with the user bounds ---
         return self._fit_with_user_bounds_only(model_template, x_fit, y_fit, y_err, param_names, user_bounds_map,
                                                initial_values)
 
     def _fit_with_user_bounds_only(self, model_template, x_fit, y_fit, y_err,
                                    param_names, user_bounds_map, initial_values):
         """
-        Ajustement avec le fitter actif en appliquant uniquement les bornes
-        utilisateur. Utilisé comme étape 2 de fit_with_bounds_check().
+        Fit with the active fitter applying only the user bounds.
+        Used as step 2 of fit_with_bounds_check().
 
         Parameters
         ----------
         model_template : astropy FittableModel
-            Modèle source (copié avant modification).
+            Source model (copied before modification).
         x_fit : ndarray
-            Variable indépendante sur la plage d'ajustement.
+            Independent variable over the fit range.
         y_fit : ndarray
-            Données observées [coups s-1].
+            Observed data [counts s-1].
         y_err : ndarray
-            Erreurs sur y_fit [coups s-1].
+            Errors on y_fit [counts s-1].
         param_names : list of str
-            Noms des paramètres libres.
+            Names of the free parameters.
         user_bounds_map : dict
-            {param: (min, max)} — bornes utilisateur à appliquer.
+            {param: (min, max)} — user bounds to apply.
         initial_values : dict
-            {param: valeur} — valeurs initiales des paramètres.
+            {param: value} — initial parameter values.
 
         Returns
         -------
         astropy FittableModel
-            Modèle ajusté, ou modèle borné non ajusté en cas d'échec.
+            Fitted model, or unfitted bounded model on failure.
         """
         model_bounded = copy.deepcopy(model_template)
 
-        # Appliquer initial values et bornes utilisateur
+        # Apply the initial values and user bounds
         for pname in param_names:
             if hasattr(model_bounded, pname):
                 val = initial_values.get(pname, getattr(model_bounded, pname).value)
@@ -1041,41 +1069,43 @@ class Fitting:
 
     def _selective_fit(self):
         """
-        Point d'entrée principal du bouton 'Do Fit'. Orchestre l'ensemble
-        du pipeline d'ajustement pour le modèle sélectionné dans la listbox.
+        Main entry point for the 'Do Fit' button. Orchestrates the whole
+        fitting pipeline for the method selected via 'Set method' — either
+        Forward Folding (using the model selected in the listbox) or CNN
+        (the pre-trained neural network reconstruction).
 
-        Étapes internes :
-        1) Récupère et prépare les données (soustraction de fond optionnelle,
-           moyennage temporel, masquage des canaux invalides).
-        2) Calcule le taux de comptage, les erreurs et le flux selon l'unité
-           sélectionnée (Rate / Counts / Flux).
-        3) Applique le masque sur la plage d'énergie [fit_Emin, fit_Emax].
-        4) Lance l'ajustement via fit_unconstrained_then_bounded() ou
-           fit_with_bounds_check() selon le modèle.
-        5) Reconstruit le modèle sur le domaine complet pour l'affichage.
-        6) Affiche le graphe principal (données + modèle) et, optionnellement,
-           le spectre photonique déconvolué.
+        Internal steps:
+        1) Retrieves and prepares the data (optional background
+           subtraction, time averaging, masking of invalid channels).
+        2) Computes the count rate, errors, and flux according to the
+           selected unit (Rate / Counts / Flux).
+        3) Applies the mask over the energy range [fit_Emin, fit_Emax].
+        4) For Forward Folding: runs the fit via
+           fit_unconstrained_then_bounded() or fit_with_bounds_check()
+           depending on the model. For CNN: runs inference directly, no
+           model selection needed.
+        5) Reconstructs the model over the full domain for display.
+        6) Displays the main plot (data + model) and, optionally,
+           the deconvolved photon spectrum.
 
         Returns
         -------
         None
-
-        Notes
-        -----
-        Les modèles 6 (PowerLawCutoffFree) et 7 (VTH + PowerLawCutoffFix)
-        sont désactivés (messagebox 'Not yet available').
         """
-        selection = self.lbox.curselection()
-        if not selection:
-            messagebox.showwarning("No Model Selected",
-                                   "Please select a fit model before clicking 'Do Fit'.")
-            return
+        use_cnn = self.method_var == "CNN"
+
+        if not use_cnn:
+            selection = self.lbox.curselection()
+            if not selection:
+                messagebox.showwarning("No Model Selected",
+                                       "Please select a fit model before clicking 'Do Fit'.")
+                return
 
         if self.fname is None and self.rname is None:
             messagebox.showwarning("No File Selected", "Please, choose input file.")
             return
 
-        # ── Préparation des données ────────────────────────────────
+        # ── Preparing the data ────────────────────────────────
         if self.show_db_var.get():
             idx_s = background.BackgroundWindow.DATA_BKG_START
             idx_e = background.BackgroundWindow.DATA_BKG_END
@@ -1096,11 +1126,10 @@ class Fitting:
 
         usable = np.arange(min(matrix.shape[1], len(self.e_low_det)))
         counts = counts_all[usable]
+
         counts_err = counts_err_all[usable]
         e_low_det = self.e_low_det[usable]
         e_high_det = self.e_high_det[usable]
-
-
 
         valid = (counts_err > 0) & np.isfinite(counts_err) & np.isfinite(counts)
         counts = counts[valid]
@@ -1109,7 +1138,7 @@ class Fitting:
         e_low_det = e_low_det[valid]
         e_high_det = e_high_det[valid]
 
-        # ── Vérification que les tableaux ne sont pas vides ───────────────
+        # ── Checking that the arrays are not empty ───────────────
         if len(e_low_det) == 0 or len(e_high_det) == 0:
             messagebox.showerror(
                 "Data error",
@@ -1138,7 +1167,7 @@ class Fitting:
         y_fit = counts_fit / exposure
         y_err = counts_err_fit / exposure
 
-        # ── Unités ────────────────────────────────────────────────
+        # ── Units ────────────────────────────────────────────────
         rate = counts / exposure
         rate_err = counts_err / exposure
         flux = rate / (self.area * dE_det)
@@ -1163,13 +1192,14 @@ class Fitting:
                      verticalalignment='top',
                      bbox=dict(facecolor='white', alpha=0.7))
 
+        method_label = "CNN" if use_cnn else self.statname
+
         def finalize_main_plot():
             plt.xscale('log')
             plt.yscale('log')
-            plt.xlim(fit_Emin, fit_Emax)
             plt.xlabel("Channel Energy (keV)")
             plt.ylabel(y_label)
-            plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {self.statname}")
+            plt.title(f"Fitting on [{fit_Emin}, {fit_Emax}] keV using {method_label}")
             if self.grid_var.get():
                 plt.grid(True, which="both", ls="--", alpha=0.5)
             else:
@@ -1199,7 +1229,25 @@ class Fitting:
                 add_param_text(param_txt)
             plt.tight_layout()
 
-        # ── Plot données ───────────────────────────────────────────
+        def plot_photon_discrete(flux_photons, param_txt, title="Photon Flux Model (Neural Network)"):
+            plt.figure()
+            plt.step(Edges_photon[:-1], flux_photons, where='post',
+                     label='Photon model', color='green')
+            xscale = getattr(self, "photon_xscale", "log")
+            yscale = getattr(self, "photon_yscale", "log")
+            plt.xscale(xscale)
+            plt.yscale(yscale)
+            plt.xlabel("Energy (keV)")
+            plt.ylabel("Photon flux [photons / (s cm² keV)]")
+            plt.title(title)
+            if self.grid_var.get():
+                plt.grid(True, which="both", ls="--", alpha=0.5)
+            plt.legend()
+            if self.show_params_var.get():
+                add_param_text(param_txt)
+            plt.tight_layout()
+
+        # ── Data plot ───────────────────────────────────────────
 
         param_text = None
         model_func_photon = None
@@ -1208,12 +1256,43 @@ class Fitting:
         plt.step(edges_det[:-1], y_data, where='post',
                  label=f'{absolute_name} ({unit})', color='red')
 
-        idx = self.lbox.curselection()[0]
+        idx = None if use_cnn else self.lbox.curselection()[0]
+
+        # ══════════════════════════════════════════════════════════
+        #  CNN — Neural Network
+        # ══════════════════════════════════════════════════════════
+        if use_cnn:
+            nn_model = NeuralNetModel.load(path="data/nn_powerlaw_150k.pt", device="cpu")
+
+            photon_flux = nn_model.predict(counts, srm=matrix)
+
+            folded = (np.asarray(matrix).T @ photon_flux) / exposure
+            model_y = to_unit(folded)
+            plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
+
+            e_true = 0.5 * (np.asarray(e_low_true) + np.asarray(e_high_true))
+
+            mask_true = (e_true >= fit_Emin) & (e_true <= fit_Emax)
+
+            valid_pl = (photon_flux > 0) & (e_true > 0) & mask_true
+            nn_alpha, nn_amplitude = np.nan, np.nan
+            if valid_pl.sum() >= 2:
+                slope, intercept = np.polyfit(
+                    np.log(e_true[valid_pl]), np.log(photon_flux[valid_pl]), 1)
+                nn_alpha = -slope
+                nn_amplitude = np.exp(intercept)
+
+            photon_flux_display = np.where(mask_true, photon_flux, np.nan)
+
+            param_text = (f"Neural Network (effective power law):\n"
+                          f" amplitude = {nn_amplitude:.2e}\n alpha = {nn_alpha:.2f}\n")
+            if self.show_params_var.get():
+                add_param_text(param_text)
 
         # ══════════════════════════════════════════════════════════
         #  0 — Power Law
         # ══════════════════════════════════════════════════════════
-        if idx == 0:
+        elif idx == 0:
             model_key = "PowerLaw1D"
             initial_values, bounds_map = (
                 self.user_param_values.get(model_key, Fitting.default_param_values.get(model_key, {})),
@@ -1404,33 +1483,6 @@ class Fitting:
 
             amplitude, alpha = fitted.amplitude.value, fitted.alpha.value
 
-            # E_cut_grid = np.linspace(5, 20, 15)
-            # chi2_values = []
-            #
-            # for ec in E_cut_grid:
-            #     model_ec = PowerLawCutoffFix(
-            #         e_low_true, e_high_true, matrix_fit, exposure, ec, E_pivot_val)
-            #     fitted_ec = self.fit_unconstrained_then_bounded(
-            #         model_ec, x_fit, y_fit, y_err,
-            #         ["amplitude", "alpha"], bounds_map, initial_values)
-            #     chi2 = np.sum(((y_fit - fitted_ec(x_fit)) / (y_err + 1e-30)) ** 2)
-            #     chi2_values.append(chi2)
-            #
-            # chi2_values = np.array(chi2_values)
-            #
-            # plt.figure()
-            # plt.plot(E_cut_grid, chi2_values, 'o-', color='steelblue', label='χ²(E_cut)')
-            # plt.axvline(E_cut_val, color='red', linestyle='--',
-            #             label=f'E_cut utilisé = {E_cut_val:.2f} keV')
-            # plt.axhline(chi2_values.min(), color='orange', linestyle='--',
-            #             label=f'χ² min = {chi2_values.min():.3f}')
-            # plt.xlabel("E_cut (keV)")
-            # plt.ylabel("χ²")
-            # plt.title("χ²(E_cut) — PowerLaw Cutoff Fix")
-            # plt.legend()
-            # plt.grid(True, which="both", ls="--", alpha=0.5)
-            # plt.tight_layout()
-
             model_display = PowerLawCutoffFix(
                 e_low_true, e_high_true, matrix, exposure, E_cut_val, E_pivot_val)
             model_display.amplitude.value = amplitude
@@ -1438,10 +1490,11 @@ class Fitting:
 
             model_y = to_unit(model_display(x_fake))
 
-            # Votre masque cutoff original
+            # Cutoff mask
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, 0)
 
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             param_text = (f"Power Law Cutoff Fix:\n amplitude={amplitude:.2e}\n"
@@ -1478,7 +1531,7 @@ class Fitting:
                 )
                 return np.sum(((y_fit - fitted_model(x_fit)) / (y_err + 1e-30)) ** 2)
 
-            # Minimisation de l'erreur en fonction de E_cut dans les limites fixés par l'utilisateur
+            # Minimise the error as a function of E_cut within the user-set limits
             result = minimize_scalar(
                 chi2_for_Ecut,
                 bounds=E_cut_bound,
@@ -1488,7 +1541,7 @@ class Fitting:
 
             E_cut_val = result.x
 
-            # Récupérer le modèle final au E_cut optimal
+            # Retrieve the final model at the optimal E_cut
             model_template.E_cut = E_cut_val
             fitted = self.fit_unconstrained_then_bounded(
                 model_template, x_fit, y_fit, y_err,
@@ -1505,10 +1558,10 @@ class Fitting:
 
             model_y = to_unit(model_display(x_fake))
 
-            # masque cutoff
+            # Cutoff mask
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, 0)
-
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             param_text = (f"Power Law Cutoff Free:\n amplitude={amplitude:.2e}\n"
@@ -1547,7 +1600,7 @@ class Fitting:
 
             model_y = to_unit(model_display(x_fake))
 
-            # Votre masque cutoff original
+            # Cutoff mask
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
 
@@ -1583,6 +1636,8 @@ class Fitting:
             model_y = to_unit(model_display(x_fake))
             fit_mask_cutoff = (edges_det[:-1] >= fit_Emin) & (edges_det[:-1] < E_cut_val)
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
+
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted VTH Model', color='purple')
 
             param_text = (f"V_TH + Power Law Cutoff Fix:\n"
@@ -1604,7 +1659,6 @@ class Fitting:
                     power = np.where(E >= E_cut_val, amplitude * (E / E_pivot_val) ** (-alpha), 0.0)
                     return thermal + power
 
-                # Power-law component
                 model_func_photon = model_total
 
         # ══════════════════════════════════════════════════════════
@@ -1639,7 +1693,7 @@ class Fitting:
 
             E_cut_val = result.x
 
-            # Récupérer le modèle final au E_cut optimal
+            # Retrieve the final model at the optimal E_cut
             model_template.E_cut = E_cut_val
             fitted = self.fit_unconstrained_then_bounded(
                 model_template, x_fit, y_fit, y_err,
@@ -1656,10 +1710,11 @@ class Fitting:
 
             model_y = to_unit(model_display(x_fake))
 
-            # Votre masque cutoff original
+            # Cutoff mask
             fit_mask_cutoff = (edges_det[:-1] >= E_cut_val) & (edges_det[:-1] <= fit_Emax)
             model_y = np.where(fit_mask_cutoff, model_y, np.nan)
 
+            plt.axvline(E_cut_val, linestyle='dashed', color='y')
             plt.step(edges_det[:-1], model_y, where='post', label='Fitted Model', color='blue')
 
             fit_mask = (edges_det[:-1] >= fit_Emin) & (edges_det[1:] <= E_cut_val)
@@ -1713,10 +1768,12 @@ class Fitting:
                     power = np.where(E >= E_cut_val, amplitude * (E / E_pivot_val) ** (-alpha), 0.0)
                     return thermal + power
 
-                # Power-law component
                 model_func_photon = model_total
 
         finalize_main_plot()
         if self.show_photon_var.get():
-            plot_photon(model_func_photon, param_text)
+            if use_cnn:
+                plot_photon_discrete(photon_flux_display, param_text)
+            else:
+                plot_photon(model_func_photon, param_text)
         plt.show()
