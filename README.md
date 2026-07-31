@@ -22,6 +22,18 @@ The four windows, in the order a user typically works through them:
 
 `code/src/user_guide.py` opens an in-app, scrollable User Guide window (Help menu) with a step-by-step description of the same workflow and a summary of every spectral model - it is a good first read alongside this section, and should be kept in sync with the actual behavior when the UI changes.
 
+For an in-depth, per-module explanation of how each window and each fitting component actually works internally, see [code/src/process/README.md](code/src/process/README.md), which links out to a detailed doc per process:
+
+- [Select Input](code/src/process/inputWindow.md)
+- [Select Background](code/src/process/background.md)
+- [Download STIX Data](code/src/process/downloader.md)
+- [Plot Fit Results / fitting pipeline](code/src/process/fit_all.md)
+- [FITS loading (io/loader.py)](code/src/process/io/README.md)
+- [Plotting (graphics/)](code/src/process/graphics/README.md)
+- [Fitting subpackage overview](code/src/process/fitting/README.md)
+- [Forward-folded models and the CNN (fitting/methods/)](code/src/process/fitting/methods/README.md)
+- [C-stat fitter (fitting/fitters/)](code/src/process/fitting/fitters/README.md)
+
 ### Data loading
 
 `code/src/process/io/loader.py` is the single place that reads FITS files with Astropy. It exposes:
