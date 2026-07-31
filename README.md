@@ -82,15 +82,12 @@ CI (`.github/workflows/tests.yml`) runs the same suite on `windows-latest`, beca
 
 ### Setup
 
-    git clone https://github.com/Assamoi21/STIX-Solar-Orbiter.git
+    git clone https://github.com/Just_K3m/STIX.git
     cd STIX-Solar-Orbiter
     pip install -r requirements.txt
 
 ### Mac Installation
 If you encounter issues on macOS where Tkinter elements (buttons, windows, etc.) do not display correctly, follow these steps:
-
-- python3 -m venv venv_stix
-- source venv_stix/bin/activate
 
 - Install Python dependencies: pip install -r requirements.txt
 
@@ -146,6 +143,6 @@ This project is licensed under the MIT License.
 
 ## Authors
 
-    Abdallah Hamini, Assamoua Koman
+    Abdallah Hamini, Kemil Bina
 
     Contact : abdallah.hamini@obspm.fr
